@@ -1,0 +1,104 @@
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  ManyToOne,
+  ManyToMany,
+  JoinTable,
+  CreateDateColumn,
+  UpdateDateColumn,
+  JoinColumn,
+} from 'typeorm';
+import { User } from '../users/user.entity';
+import { Category } from '../categories/category.entity';
+import { Tag } from '../tags/tag.entity';
+
+export enum NewsStatus {
+  DRAFT = 'draft',
+  REVIEW = 'review',
+  APPROVED = 'approved',
+  PUBLISHED = 'published',
+  SCHEDULED = 'scheduled',
+}
+
+@Entity('news')
+export class News {
+  @PrimaryGeneratedColumn('increment')
+  id!: number;
+
+  @Column()
+  title!: string;
+
+  @Column({ nullable: true })
+  subtitle!: string;
+
+  @Column({ type: 'longtext' })
+  content!: string;
+
+  @Column({ nullable: true })
+  lead!: string;
+
+  @Column({ nullable: true })
+  thumbnailUrl!: string;
+
+  @Column({ nullable: true })
+  slug!: string;
+
+  @Column({ nullable: true })
+  metaDescription!: string;
+
+  @Column({ nullable: true })
+  metaKeywords!: string;
+
+  @Column({ nullable: true })
+  ogTitle!: string;
+
+  @Column({ nullable: true })
+  ogImage!: string;
+
+  @Column({ type: 'enum', enum: NewsStatus, default: NewsStatus.DRAFT })
+  status!: NewsStatus;
+
+  @Column({ default: 0 })
+  viewCount!: number;
+
+  @Column({ default: 0 })
+  likeCount!: number;
+
+  @Column({ default: 0 })
+  shareCount!: number;
+
+  @Column({ nullable: true })
+  scheduledAt!: Date;
+
+  @Column({ nullable: true })
+  publishedAt!: Date;
+
+  @ManyToOne(() => User)
+  @JoinColumn({ name: 'author_id' })
+  author!: User;
+
+  @Column()
+  authorId!: number;
+
+  @ManyToOne(() => Category, { nullable: true })
+  @JoinColumn({ name: 'category_id' })
+  category!: Category;
+
+  @Column({ nullable: true })
+  categoryId!: number;
+
+  @ManyToMany(() => Tag)
+  @JoinTable({
+    name: 'news_tags',
+    joinColumn: { name: 'news_id' },
+    inverseJoinColumn: { name: 'tag_id' },
+  })
+  tags!: Tag[];
+
+  @CreateDateColumn()
+  createdAt!: Date;
+
+  @UpdateDateColumn()
+  updatedAt!: Date;
+}
