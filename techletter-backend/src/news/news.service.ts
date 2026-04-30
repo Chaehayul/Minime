@@ -5,15 +5,54 @@ import { News, NewsStatus } from './news.entity';
 import { Tag } from '../tags/tag.entity';
 import { CreateNewsDto } from './dto/create-news.dto';
 import { UpdateNewsDto } from './dto/update-news.dto';
+import OpenAI from 'openai'; // ✅ OpenAI 임포트 추가
 
 @Injectable()
 export class NewsService {
+  private openai: OpenAI; // ✅ OpenAI 인스턴스 변수 선언
+
   constructor(
     @InjectRepository(News)
     private newsRepository: Repository<News>,
     @InjectRepository(Tag)
     private tagRepository: Repository<Tag>,
-  ) {}
+  ) {
+    // ✅ 클래스 생성 시점에 OpenAI 초기화
+    this.openai = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+    });
+  }
+
+  // ✅ AI 3줄 요약 프라이빗 메서드 추가
+  private async generateAiSummary(content: string): Promise<string> {
+    if (!content) return ''; // 본문이 없으면 빈 문자열 반환
+
+    try {
+      const response = await this.openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'system',
+            content: `너는 IT 전문 기자이자 요약의 달인이야. 주어진 뉴스 본문을 핵심만 뽑아 정확히 3줄로 요약해야 해. 
+            [규칙]
+            1. 반드시 각 줄은 "- " 기호로 시작할 것.
+            2. 일반인도 이해하기 쉬운 친절한 말투를 사용할 것.
+            3. 3줄을 초과하거나 미달하지 말 것.`,
+          },
+          {
+            role: 'user',
+            content: content,
+          },
+        ],
+        temperature: 0.3,
+      });
+
+      return response.choices[0].message.content || '요약을 생성할 수 없습니다.';
+    } catch (error) {
+      console.error('AI 요약 생성 중 에러 발생:', error);
+      return 'AI 요약 생성에 실패했습니다.';
+    }
+  }
 
   async findAll(page = 1, limit = 10, categoryId?: number, status?: string) {
     const query = this.newsRepository.createQueryBuilder('news')
@@ -77,11 +116,15 @@ export class NewsService {
       );
     }
 
+    // ✅ 뉴스 저장 전 본문(content)을 바탕으로 AI 요약본 생성
+    const aiSummary = await this.generateAiSummary(dto.content);
+
     const news = this.newsRepository.create({
       ...dto,
       slug,
       authorId,
       tags,
+      aiSummary, // ✅ 생성된 요약본을 DB 엔티티에 매핑
       status: (dto.status as NewsStatus) || NewsStatus.DRAFT,
       publishedAt: dto.status === NewsStatus.PUBLISHED ? new Date() : undefined,
     });
@@ -109,6 +152,9 @@ export class NewsService {
       news.publishedAt = new Date();
     }
 
+    // (선택 사항) 만약 뉴스 내용(content)이 수정될 때마다 요약본도 갱신하고 싶다면
+    // update 메서드 안에도 const aiSummary = await this.generateAiSummary(dto.content); 를 추가할 수 있습니다.
+    
     Object.assign(news, { ...dto, tags: news.tags });
     return this.newsRepository.save(news);
   }
