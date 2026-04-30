@@ -3,12 +3,15 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import { User, SocialProvider } from './user.entity';
+import { DeletedUser } from './deleted-user.entity';
 
 @Injectable()
 export class UsersService {
   constructor(
     @InjectRepository(User)
     private usersRepository: Repository<User>,
+    @InjectRepository(DeletedUser)
+    private deletedUsersRepository: Repository<DeletedUser>,
   ) {}
 
   async findByEmail(email: string): Promise<User | null> {
@@ -26,6 +29,8 @@ export class UsersService {
     socialProvider?: SocialProvider;
     socialId?: string;
   }): Promise<User> {
+    await this.ensureNotDeletedUser(data.email, data.socialProvider, data.socialId);
+
     const existing = await this.findByEmail(data.email);
     if (existing) throw new ConflictException('이미 사용 중인 이메일입니다.');
 
@@ -36,6 +41,34 @@ export class UsersService {
     const user = this.usersRepository.create({
       ...data,
       password: hashedPassword ?? undefined,
+    });
+
+    return this.usersRepository.save(user);
+  }
+
+  async findOrCreateSocialUser(data: {
+    email: string;
+    nickname: string;
+    socialProvider: SocialProvider;
+    socialId: string;
+    profileImage?: string;
+  }): Promise<User> {
+    await this.ensureNotDeletedUser(data.email, data.socialProvider, data.socialId);
+
+    const existing = await this.findByEmail(data.email);
+    if (existing) {
+      existing.socialProvider = data.socialProvider;
+      existing.socialId = data.socialId;
+      if (data.profileImage) existing.profileImage = data.profileImage;
+      return this.usersRepository.save(existing);
+    }
+
+    const user = this.usersRepository.create({
+      email: data.email,
+      nickname: data.nickname,
+      socialProvider: data.socialProvider,
+      socialId: data.socialId,
+      profileImage: data.profileImage,
     });
 
     return this.usersRepository.save(user);
@@ -78,7 +111,35 @@ export class UsersService {
     const user = await this.findById(userId);
     if (!user) throw new NotFoundException('유저를 찾을 수 없습니다.');
 
+    const deletedUser = this.deletedUsersRepository.create({
+      email: user.email,
+      socialProvider: user.socialProvider,
+      socialId: user.socialId,
+    });
+    await this.deletedUsersRepository.save(deletedUser);
+
     await this.usersRepository.remove(user);
     return { message: '회원 탈퇴가 완료되었습니다.' };
   }
+
+  private async ensureNotDeletedUser(
+    email: string,
+    socialProvider?: SocialProvider,
+    socialId?: string,
+  ) {
+    const deletedByEmail = await this.deletedUsersRepository.findOne({ where: { email } });
+    if (deletedByEmail) {
+      throw new ConflictException('탈퇴한 계정은 다시 가입할 수 없습니다.');
+    }
+
+    if (socialProvider && socialId) {
+      const deletedBySocial = await this.deletedUsersRepository.findOne({
+        where: { socialProvider, socialId },
+      });
+      if (deletedBySocial) {
+        throw new ConflictException('탈퇴한 소셜 계정은 다시 로그인할 수 없습니다.');
+      }
+    }
+  }
+
 }

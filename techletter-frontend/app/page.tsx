@@ -209,7 +209,7 @@ export default function HomePage() {
           </Link>
           <Link href="/search" className="flex-1 flex flex-col items-center gap-1 py-3">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-            <span className="text-xs text-gray-500">탐색</span>
+            <span className="text-xs text-gray-500">검색</span>
           </Link>
           <Link href="/mypage/bookmarks" className="flex-1 flex flex-col items-center gap-1 py-3">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="2"><path d="m19 21-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
