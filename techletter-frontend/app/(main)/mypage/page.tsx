@@ -12,10 +12,16 @@ interface User {
   role: string;
 }
 
+type SubscriptionStatus = 'NONE' | 'ACTIVE' | 'CANCELED' | 'EXPIRED' | 'PAYMENT_FAILED';
+
 interface Subscription {
-  dailyActive: boolean;
-  weeklyActive: boolean;
-  dailySendTime: string;
+  status: SubscriptionStatus;
+  planType: 'daily' | 'weekly' | 'all' | null;
+  startDate: string | null;
+  endDate: string | null;
+  nextPaymentDate: string | null;
+  paymentMethodLast4: string | null;
+  paymentMethodBrand: string | null;
 }
 
 interface Bookmark {
@@ -32,6 +38,179 @@ interface ActivityStats {
   bookmarks: number;
   likes: number;
   comments: number;
+}
+
+const planLabel: Record<string, string> = {
+  daily: '데일리 플랜',
+  weekly: '위클리 플랜',
+  all: '올인원 플랜',
+};
+
+const formatDate = (dateStr: string | null) => {
+  if (!dateStr) return '-';
+  const d = new Date(dateStr);
+  return `${d.getFullYear()}년 ${d.getMonth() + 1}월 ${d.getDate()}일`;
+};
+
+function SubscriptionSection({
+  subscription,
+  onUnsubscribe,
+  onResubscribe,
+}: {
+  subscription: Subscription | null;
+  onUnsubscribe: () => void;
+  onResubscribe: () => void;
+}) {
+  const status = subscription?.status ?? 'NONE';
+
+  if (status === 'NONE' || !subscription) {
+    return (
+      <div className="flex flex-col gap-3">
+        <p className="text-sm text-gray-500">아직 구독하지 않았어요</p>
+        <Link href="/subscriptions/plans">
+          <button className="w-full bg-blue-600 hover:bg-blue-700 text-white rounded-lg py-2.5 text-sm font-medium transition">
+            뉴스레터 구독하기
+          </button>
+        </Link>
+      </div>
+    );
+  }
+
+  if (status === 'ACTIVE') {
+    return (
+      <div className="flex flex-col gap-4">
+        <div className="flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-emerald-400 inline-block" />
+          <span className="text-sm font-medium text-emerald-400">구독 중</span>
+        </div>
+        <div className="bg-gray-900 rounded-xl p-4 flex flex-col gap-3">
+          <div className="flex justify-between">
+            <span className="text-xs text-gray-500">플랜</span>
+            <span className="text-sm font-medium text-white">
+              {planLabel[subscription.planType ?? ''] ?? '-'}
+            </span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-xs text-gray-500">이용 기간</span>
+            <span className="text-sm text-gray-300">
+              {formatDate(subscription.startDate)} ~ {formatDate(subscription.endDate)}
+            </span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-xs text-gray-500">다음 결제일</span>
+            <span className="text-sm text-gray-300">{formatDate(subscription.nextPaymentDate)}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-xs text-gray-500">결제 수단</span>
+            <span className="text-sm text-gray-300">
+              {subscription.paymentMethodBrand} ****{subscription.paymentMethodLast4}
+            </span>
+          </div>
+        </div>
+        <Link href="/mypage/payments" className="flex justify-between items-center py-2">
+          <span className="text-sm text-gray-400">결제 내역 보기</span>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="2.5">
+            <polyline points="9 18 15 12 9 6" />
+          </svg>
+        </Link>
+        <button onClick={onUnsubscribe} className="text-sm text-red-400 hover:text-red-300 transition text-left">
+          구독 해지
+        </button>
+      </div>
+    );
+  }
+
+  if (status === 'CANCELED') {
+    return (
+      <div className="flex flex-col gap-4">
+        <div className="flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-yellow-400 inline-block" />
+          <span className="text-sm font-medium text-yellow-400">해지 예약됨</span>
+        </div>
+        <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-xl p-4">
+          <p className="text-sm text-yellow-300 font-medium mb-1">구독 해지됨</p>
+          <p className="text-xs text-yellow-200/70">
+            {formatDate(subscription.endDate)}까지 이용 가능해요.
+            이후에는 자동으로 서비스가 종료됩니다.
+          </p>
+        </div>
+        <div className="bg-gray-900 rounded-xl p-4 flex flex-col gap-3">
+          <div className="flex justify-between">
+            <span className="text-xs text-gray-500">플랜</span>
+            <span className="text-sm text-gray-300">{planLabel[subscription.planType ?? ''] ?? '-'}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-xs text-gray-500">이용 종료일</span>
+            <span className="text-sm text-gray-300">{formatDate(subscription.endDate)}</span>
+          </div>
+        </div>
+        <Link href="/mypage/payments" className="flex justify-between items-center py-2">
+          <span className="text-sm text-gray-400">결제 내역 보기</span>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="2.5">
+            <polyline points="9 18 15 12 9 6" />
+          </svg>
+        </Link>
+        <button onClick={onResubscribe}
+          className="w-full bg-blue-600 hover:bg-blue-700 text-white rounded-lg py-2.5 text-sm font-medium transition">
+          자동결제 재활성화
+        </button>
+      </div>
+    );
+  }
+
+  if (status === 'EXPIRED') {
+    return (
+      <div className="flex flex-col gap-4">
+        <div className="flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-gray-500 inline-block" />
+          <span className="text-sm font-medium text-gray-400">구독 만료</span>
+        </div>
+        <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
+          <p className="text-sm text-gray-300 font-medium mb-1">이용 기간이 종료되었어요</p>
+          <p className="text-xs text-gray-500">
+            {formatDate(subscription.endDate)}에 구독이 만료되었습니다.
+            다시 구독하시면 바로 이용 가능해요.
+          </p>
+        </div>
+        <Link href="/subscriptions/plans">
+          <button className="w-full bg-blue-600 hover:bg-blue-700 text-white rounded-lg py-2.5 text-sm font-medium transition">
+            다시 구독하기
+          </button>
+        </Link>
+      </div>
+    );
+  }
+
+  if (status === 'PAYMENT_FAILED') {
+    return (
+      <div className="flex flex-col gap-4">
+        <div className="flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-red-500 inline-block" />
+          <span className="text-sm font-medium text-red-400">결제 실패</span>
+        </div>
+        <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4">
+          <p className="text-sm text-red-300 font-medium mb-1">자동결제에 실패했어요</p>
+          <p className="text-xs text-red-200/70">
+            등록된 카드({subscription.paymentMethodBrand} ****{subscription.paymentMethodLast4})로
+            결제에 실패했습니다. 결제 수단을 변경하거나 카드 정보를 확인해주세요.
+          </p>
+        </div>
+        <Link href="/subscriptions/payment-method">
+          <button className="w-full bg-red-600 hover:bg-red-700 text-white rounded-lg py-2.5 text-sm font-medium transition">
+            결제 수단 변경하기
+          </button>
+        </Link>
+        <Link href="/mypage/payments" className="flex justify-between items-center py-2">
+          <span className="text-sm text-gray-400">결제 내역 보기</span>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="2.5">
+            <polyline points="9 18 15 12 9 6" />
+          </svg>
+        </Link>
+      </div>
+    );
+  }
+
+  return null;
 }
 
 export default function MyPage() {
@@ -61,11 +240,7 @@ export default function MyPage() {
         setSubscription(subRes.data);
         const bookmarkList = bookmarkRes.data || [];
         setBookmarks(bookmarkList.slice(0, 3));
-        setStats({
-          bookmarks: bookmarkList.length,
-          likes: 0,
-          comments: 0,
-        });
+        setStats({ bookmarks: bookmarkList.length, likes: 0, comments: 0 });
         setNewNickname(userRes.data.nickname);
       } catch {
         router.push('/login');
@@ -74,27 +249,28 @@ export default function MyPage() {
       }
     };
     fetchData();
-  }, []);
+  }, [router]);
 
   const handleLogout = () => {
     localStorage.removeItem('accessToken');
     router.push('/login');
   };
 
-  const handleSubscribe = async () => {
+  const handleUnsubscribe = async () => {
+    if (!confirm('구독을 해지하시겠어요?\n남은 이용 기간 동안은 계속 이용 가능합니다.')) return;
     try {
-      await api.post('/subscriptions');
-      const res = await api.get('/subscriptions/me');
-      setSubscription(res.data);
+      await api.delete('/subscriptions');
+      setSubscription(prev => prev ? { ...prev, status: 'CANCELED' } : prev);
     } catch (err: any) {
       alert(err.response?.data?.message || '오류가 발생했습니다.');
     }
   };
 
-  const handleUnsubscribe = async () => {
+  const handleResubscribe = async () => {
     try {
-      await api.delete('/subscriptions');
-      setSubscription(null);
+      await api.post('/subscriptions/reactivate');
+      const res = await api.get('/subscriptions/me');
+      setSubscription(res.data);
     } catch (err: any) {
       alert(err.response?.data?.message || '오류가 발생했습니다.');
     }
@@ -197,10 +373,30 @@ export default function MyPage() {
               </div>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="2.5"><polyline points="9 18 15 12 9 6"/></svg>
             </Link>
-            <Link href="/admin/stats" className="flex justify-between items-center py-3">
+            <Link href="/admin/stats" className="flex justify-between items-center py-3 border-b border-gray-800">
               <div className="flex items-center gap-3">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
                 <span className="text-sm text-gray-200">통계 대시보드</span>
+              </div>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+            </Link>
+            {/* ✅ 추가된 메뉴 */}
+            <Link href="/admin/subscribers" className="flex justify-between items-center py-3 border-b border-gray-800">
+              <div className="flex items-center gap-3">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2">
+                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
+                  <path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                </svg>
+                <span className="text-sm text-gray-200">구독자 관리</span>
+              </div>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+            </Link>
+            <Link href="/admin/sends" className="flex justify-between items-center py-3">
+              <div className="flex items-center gap-3">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2">
+                  <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+                </svg>
+                <span className="text-sm text-gray-200">뉴스레터 발송 이력</span>
               </div>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="2.5"><polyline points="9 18 15 12 9 6"/></svg>
             </Link>
@@ -270,39 +466,11 @@ export default function MyPage() {
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
             <span className="font-bold text-sm">구독 설정</span>
           </div>
-          {subscription ? (
-            <div className="flex flex-col gap-3">
-              <div className="flex justify-between items-center">
-                <div>
-                  <div className="text-sm text-gray-200">데일리 뉴스레터</div>
-                  <div className="text-xs text-gray-500">매일 오전 수신 중</div>
-                </div>
-                <div className={`w-11 h-6 rounded-full flex items-center px-0.5 transition ${subscription.dailyActive ? 'bg-blue-600 justify-end' : 'bg-gray-700 justify-start'}`}>
-                  <div className="w-5 h-5 rounded-full bg-white" />
-                </div>
-              </div>
-              <div className="flex justify-between items-center">
-                <div>
-                  <div className="text-sm text-gray-200">주간 뉴스레터</div>
-                  <div className="text-xs text-gray-500">매주 월요일 수신 중</div>
-                </div>
-                <div className={`w-11 h-6 rounded-full flex items-center px-0.5 transition ${subscription.weeklyActive ? 'bg-blue-600 justify-end' : 'bg-gray-700 justify-start'}`}>
-                  <div className="w-5 h-5 rounded-full bg-white" />
-                </div>
-              </div>
-              <button onClick={handleUnsubscribe} className="mt-2 text-sm text-red-400 hover:text-red-300 transition text-left">
-                구독 해지
-              </button>
-            </div>
-          ) : (
-            <div className="flex flex-col gap-3">
-              <p className="text-sm text-gray-500">아직 구독하지 않았어요</p>
-              <button onClick={handleSubscribe}
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white rounded-lg py-2.5 text-sm font-medium transition">
-                뉴스레터 구독하기
-              </button>
-            </div>
-          )}
+          <SubscriptionSection
+            subscription={subscription}
+            onUnsubscribe={handleUnsubscribe}
+            onResubscribe={handleResubscribe}
+          />
         </div>
 
         {/* 설정 */}
@@ -320,7 +488,7 @@ export default function MyPage() {
               <span className="text-sm text-gray-200">다크모드</span>
             </div>
             <button onClick={toggleDarkMode}
-              className={`w-11 h-6 rounded-full flex items-center px-0.5 transition ${darkMode ? 'bg-blue-600 justify-end' : 'bg-gray-700 justify-start'}`}>
+              className={`w-11 h-6 rounded-full flex items-center px-0.5 transition-all duration-200 ${darkMode ? 'bg-blue-600 justify-end' : 'bg-gray-700 justify-start'}`}>
               <div className="w-5 h-5 rounded-full bg-white" />
             </button>
           </div>
