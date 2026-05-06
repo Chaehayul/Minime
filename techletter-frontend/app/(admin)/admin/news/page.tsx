@@ -66,7 +66,7 @@ export default function AdminNewsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white pb-10">
+    <div className="min-h-screen transition-colors duration-200 pb-10">
       {/* 헤더 */}
       <header className="sticky top-0 z-50 bg-gray-950 border-b border-gray-800">
         <div className="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between">

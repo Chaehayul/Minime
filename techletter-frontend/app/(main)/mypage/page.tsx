@@ -3,8 +3,11 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { useTheme } from 'next-themes'; // ✅ 1. next-themes 불러오기
+import Image from 'next/image';
+import { useTheme } from 'next-themes';
 import api, { getImageUrl } from '@/lib/api';
+// 실제 파일 경로에 맞게 필요시 수정하세요
+import { useUserReport } from '@/hooks/useUserReport';
 
 interface User {
   id: number;
@@ -22,39 +25,74 @@ interface Subscription {
 interface Bookmark {
   id: number;
   createdAt: string;
-  news: {
-    id: number;
-    title: string;
-    thumbnailUrl: string;
-  };
+  news: { id: number; title: string; thumbnailUrl: string };
 }
 
-interface ActivityStats {
-  bookmarks: number;
-  likes: number;
-  comments: number;
+const CATEGORY_EMOJI: Record<string, string> = {
+  'ai-ml': '🤖', 'web-dev': '🌐', cloud: '☁️',
+  'open-source': '📦', security: '🔐', startup: '🚀', trend: '📈',
+};
+
+// 통계 카드 한 개
+function StatCard({
+  value, label, pct,
+}: { value: number; label: string; pct: number }) {
+  return (
+    // 배경을 부드러운 다크그레이(#1E1E1E)로 변경
+    <div className="flex flex-col gap-2 bg-white dark:bg-[#1E1E1E] rounded-2xl p-4 border border-gray-100 dark:border-[#2E2E2E]">
+      <span className="text-2xl font-bold tabular-nums text-gray-900 dark:text-white leading-none">
+        {value.toLocaleString()}
+      </span>
+      <span className="text-[11px] text-gray-400 dark:text-gray-400">{label}</span>
+      {/* 미니 진행 바 */}
+      <div className="h-[3px] rounded-full bg-gray-100 dark:bg-[#2A2A2A] overflow-hidden">
+        <div
+          className="h-full rounded-full bg-gray-900 dark:bg-white transition-all duration-700"
+          style={{ width: `${Math.min(pct, 100)}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
+// 토글 스위치 (버튼 튀어 나가는 현상 완벽 수정)
+function Toggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
+  return (
+    <button
+      role="switch"
+      aria-checked={on}
+      onClick={onToggle}
+      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-200 focus:outline-none flex-shrink-0 ${
+        on ? 'bg-gray-900 dark:bg-white' : 'bg-gray-200 dark:bg-[#333333]'
+      }`}
+    >
+      <span
+        className={`inline-block h-5 w-5 transform rounded-full bg-white dark:bg-[#121212] transition duration-200 ease-in-out shadow-sm ${
+          on ? 'translate-x-5' : 'translate-x-0.5'
+        }`}
+      />
+    </button>
+  );
 }
 
 export default function MyPage() {
   const router = useRouter();
-  
-  // ✅ 2. 테마 훅 사용
   const { theme, setTheme } = useTheme();
-  // hydration error 방지를 위해 mounted 상태 확인
   const [mounted, setMounted] = useState(false);
-  
+
   const [user, setUser] = useState<User | null>(null);
   const [subscription, setSubscription] = useState<Subscription | null>(null);
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
-  const [stats, setStats] = useState<ActivityStats>({ bookmarks: 0, likes: 0, comments: 0 });
   const [loading, setLoading] = useState(true);
+
   const [editMode, setEditMode] = useState(false);
   const [newNickname, setNewNickname] = useState('');
   const [editLoading, setEditLoading] = useState(false);
 
+  const { report } = useUserReport();
+
   useEffect(() => {
-    setMounted(true); // 마운트 완료 확인
-    
+    setMounted(true);
     const fetchData = async () => {
       try {
         const [userRes, subRes, bookmarkRes] = await Promise.all([
@@ -64,13 +102,7 @@ export default function MyPage() {
         ]);
         setUser(userRes.data);
         setSubscription(subRes.data);
-        const bookmarkList = bookmarkRes.data || [];
-        setBookmarks(bookmarkList.slice(0, 3));
-        setStats({
-          bookmarks: bookmarkList.length,
-          likes: 0,
-          comments: 0,
-        });
+        setBookmarks((bookmarkRes.data ?? []).slice(0, 3));
         setNewNickname(userRes.data.nickname);
       } catch {
         router.push('/login');
@@ -105,14 +137,30 @@ export default function MyPage() {
     }
   };
 
+  const handleToggleSubscription = async (type: 'dailyActive' | 'weeklyActive') => {
+    if (!subscription) return;
+
+    // 1. 서버 응답을 기다리지 않고 UI(스위치)를 먼저 즉각적으로 변경
+    const prevValue = subscription[type];
+    setSubscription({ ...subscription, [type]: !prevValue });
+
+    try {
+      // 2. 백엔드 API에 변경된 설정값 전송 (API 엔드포인트는 진현님의 백엔드 설정에 맞게 PATCH나 PUT으로 맞춰주세요)
+      await api.patch('/subscriptions/me', { [type]: !prevValue });
+    } catch (err: any) {
+      // 3. 서버 오류 시 원래 상태로 롤백
+      setSubscription({ ...subscription, [type]: prevValue });
+      alert(err.response?.data?.message || '설정 변경에 실패했습니다.');
+    }
+  };
+
   const handleEditNickname = async () => {
-    if (!newNickname.trim()) return;
+    if (!newNickname.trim() || newNickname === user?.nickname) return;
     setEditLoading(true);
     try {
       await api.put('/users/me', { nickname: newNickname });
-      setUser(u => u ? { ...u, nickname: newNickname } : u);
+      setUser((u) => (u ? { ...u, nickname: newNickname } : u));
       setEditMode(false);
-      alert('닉네임이 변경되었습니다!');
     } catch (err: any) {
       alert(err.response?.data?.message || '변경 실패');
     } finally {
@@ -120,245 +168,297 @@ export default function MyPage() {
     }
   };
 
-  // ✅ 3. 다크모드 토글 함수
-  const toggleDarkMode = () => {
-    setTheme(theme === 'dark' ? 'light' : 'dark');
-  };
+  const isDark = mounted && theme === 'dark';
 
-  if (loading || !mounted) return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex items-center justify-center">
-      <div className="text-gray-500">로딩 중...</div>
-    </div>
-  );
+  if (loading || !mounted) {
+    return (
+      <div className="min-h-screen flex items-center justify-center dark:bg-[#121212]">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-10 h-10 rounded-full bg-gray-100 dark:bg-[#2A2A2A] animate-pulse" />
+          <div className="h-3 w-24 rounded bg-gray-100 dark:bg-[#2A2A2A] animate-pulse" />
+        </div>
+      </div>
+    );
+  }
 
-  const isDark = theme === 'dark';
+  const readCount = report?.monthlyReadCount ?? 0;
+  const bookmarkCount = report?.bookmarkCount ?? 0;
+  const likeCount = report?.likeCount ?? 0;
+  const maxVal = Math.max(readCount, bookmarkCount, likeCount, 1);
 
   return (
-    // ✅ 4. 배경, 텍스트, 테두리 색상에 다크모드 대응(dark: 클래스) 추가
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-white pb-24 transition-colors duration-200">
-      <header className="sticky top-0 z-50 bg-white dark:bg-gray-950 border-b border-gray-200 dark:border-gray-800 transition-colors duration-200">
-        <div className="max-w-3xl mx-auto px-4 h-14 flex items-center justify-between">
-          <span className="font-bold text-base">마이페이지</span>
-          <Link href="/mypage/settings">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-          </Link>
+    // 전체 배경을 부드러운 다크그레이(#121212)로 변경
+    <div className="min-h-screen bg-gray-50 dark:bg-[#121212] transition-colors">
+
+      {/* ── 헤더 ── */}
+      <header className="sticky top-0 z-50 bg-white/80 dark:bg-[#121212]/80 backdrop-blur-md border-b border-gray-100 dark:border-[#2E2E2E] transition-colors">
+        <div className="max-w-xl mx-auto px-4 h-14 flex items-center justify-center">
+          <span className="font-semibold text-base text-gray-900 dark:text-white">마이페이지</span>
         </div>
       </header>
 
-      <main className="max-w-3xl mx-auto px-4 py-6 flex flex-col gap-6">
+      <main className="max-w-xl mx-auto px-4 py-5 flex flex-col gap-4 pb-32">
 
-        {/* 프로필 */}
-        <div className="pb-6 border-b border-gray-200 dark:border-gray-800">
-          <div className="flex items-center gap-4 mb-4">
-            <div className="w-14 h-14 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center text-xl font-bold text-blue-600 dark:text-blue-300">
-              {user?.nickname?.[0]?.toUpperCase()}
-            </div>
-            <div className="flex-1">
-              <div className="flex items-center gap-2">
-                <div className="font-bold text-base">{user?.nickname}</div>
-                {user?.role === 'admin' && (
-                  <span className="text-xs px-2 py-0.5 bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-300 rounded-full">관리자</span>
-                )}
+        {/* ── 1. 프로필 카드 ── */}
+        <section className="bg-white dark:bg-[#1E1E1E] rounded-2xl border border-gray-100 dark:border-[#2E2E2E] overflow-hidden">
+          <div className="p-5">
+            <div className="flex items-center gap-3">
+              <div className="w-14 h-14 rounded-2xl bg-gray-900 dark:bg-white flex items-center justify-center
+                              text-white dark:text-gray-900 text-xl font-bold flex-shrink-0">
+                {user?.nickname?.[0]?.toUpperCase()}
               </div>
-              <div className="text-sm text-gray-500">{user?.email}</div>
-            </div>
-            <button onClick={() => setEditMode(!editMode)}
-              className="text-sm px-4 py-1.5 border border-gray-300 dark:border-gray-700 rounded-lg text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition">
-              {editMode ? '취소' : '편집'}
-            </button>
-          </div>
-          {editMode && (
-            <div className="flex gap-2">
-              <input type="text" value={newNickname}
-                onChange={(e) => setNewNickname(e.target.value)}
-                placeholder="새 닉네임 입력"
-                className="flex-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 outline-none focus:ring-2 focus:ring-blue-500"
-              />
-              <button onClick={handleEditNickname} disabled={editLoading}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg transition disabled:opacity-50">
-                {editLoading ? '저장 중...' : '저장'}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-semibold text-base text-gray-900 dark:text-white truncate">
+                    {user?.nickname}
+                  </span>
+                  {user?.role === 'admin' && (
+                    <span className="text-[10px] px-1.5 py-0.5 bg-blue-50 dark:bg-[#2A2A2A]
+                                     text-blue-600 dark:text-blue-400 rounded-md font-semibold">
+                      ADMIN
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-gray-400 dark:text-gray-400 truncate mt-0.5">{user?.email}</p>
+              </div>
+              <button
+                onClick={() => setEditMode((v) => !v)}
+                className="text-xs text-gray-500 dark:text-gray-300 border border-gray-200 dark:border-[#3A3A3A]
+                           rounded-lg px-3 py-1.5 hover:bg-gray-50 dark:hover:bg-[#2A2A2A] transition flex-shrink-0 whitespace-nowrap"
+              >
+                {editMode ? '닫기' : '편집'}
               </button>
             </div>
-          )}
-        </div>
 
-        {/* 관리자 메뉴 */}
-        {user?.role === 'admin' && (
-          <div className="pb-6 border-b border-gray-200 dark:border-gray-800">
-            <div className="flex items-center gap-2 mb-4">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 9h6M9 12h6M9 15h4"/></svg>
-              <span className="font-bold text-sm text-blue-500 dark:text-blue-400">관리자 메뉴</span>
-            </div>
-            <Link href="/admin/news/create" className="flex justify-between items-center py-3 border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-900 px-2 -mx-2 rounded-lg transition">
-              <div className="flex items-center gap-3">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="text-gray-500" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                <span className="text-sm text-gray-700 dark:text-gray-200">뉴스 작성</span>
+            {editMode && (
+              <div className="mt-4 pt-4 border-t border-gray-100 dark:border-[#2E2E2E] flex flex-col gap-3">
+                <div>
+                  <label className="text-xs text-gray-400 dark:text-gray-400 mb-1.5 block">닉네임 변경</label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={newNickname}
+                      onChange={(e) => setNewNickname(e.target.value)}
+                      className="flex-1 bg-gray-50 dark:bg-[#121212] border border-gray-200 dark:border-[#3A3A3A]
+                                 rounded-xl px-3 py-2 text-sm text-gray-900 dark:text-white outline-none
+                                 focus:ring-2 focus:ring-gray-900 dark:focus:ring-white transition min-w-0"
+                    />
+                    {/* 저장 버튼에 튀어 나감 방지용 flex-shrink-0 및 whitespace-nowrap 추가 */}
+                    <button
+                      onClick={handleEditNickname}
+                      disabled={editLoading || newNickname === user?.nickname || !newNickname.trim()}
+                      className="px-4 py-2 bg-gray-900 dark:bg-white text-white dark:text-gray-900
+                                 text-sm rounded-xl font-medium disabled:opacity-40 transition whitespace-nowrap flex-shrink-0"
+                    >
+                      {editLoading ? '저장 중...' : '저장'}
+                    </button>
+                  </div>
+                </div>
               </div>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="text-gray-400" strokeWidth="2.5"><polyline points="9 18 15 12 9 6"/></svg>
-            </Link>
-            <Link href="/admin/news" className="flex justify-between items-center py-3 border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-900 px-2 -mx-2 rounded-lg transition">
-              <div className="flex items-center gap-3">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="text-gray-500" strokeWidth="2"><path d="M4 6h16M4 10h16M4 14h16M4 18h16"/></svg>
-                <span className="text-sm text-gray-700 dark:text-gray-200">뉴스 관리</span>
-              </div>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="text-gray-400" strokeWidth="2.5"><polyline points="9 18 15 12 9 6"/></svg>
-            </Link>
-            <Link href="/admin/stats" className="flex justify-between items-center py-3 hover:bg-gray-50 dark:hover:bg-gray-900 px-2 -mx-2 rounded-lg transition">
-              <div className="flex items-center gap-3">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="text-gray-500" strokeWidth="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
-                <span className="text-sm text-gray-700 dark:text-gray-200">통계 대시보드</span>
-              </div>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="text-gray-400" strokeWidth="2.5"><polyline points="9 18 15 12 9 6"/></svg>
-            </Link>
+            )}
           </div>
+
+          <div className="grid grid-cols-2 gap-2 px-5 pb-5">
+            <StatCard value={readCount}     label="이번 달 읽은 뉴스" pct={(readCount / maxVal) * 100} />
+            <StatCard value={bookmarkCount} label="북마크"            pct={(bookmarkCount / maxVal) * 100} />
+            <StatCard value={likeCount}     label="좋아요"            pct={(likeCount / maxVal) * 100} />
+            <StatCard value={0}             label="작성 댓글"         pct={0} />
+          </div>
+
+          {report && report.topCategories.length > 0 && (
+            <div className="px-5 pb-5 border-t border-gray-50 dark:border-[#2E2E2E] pt-4">
+              <p className="text-[11px] text-gray-400 dark:text-gray-500 mb-2">많이 읽는 카테고리</p>
+              <div className="flex flex-wrap gap-1.5">
+                {report.topCategories.map((item, i) => (
+                  <Link
+                    key={item.category.id}
+                    href={`/category/${item.category.slug}`}
+                    className={`flex items-center gap-1 text-xs px-3 py-1.5 rounded-full border transition
+                      ${i === 0
+                        ? 'bg-gray-900 dark:bg-white text-white dark:text-gray-900 border-gray-900 dark:border-white font-medium'
+                        : 'bg-white dark:bg-[#121212] text-gray-600 dark:text-gray-300 border-gray-200 dark:border-[#3A3A3A] hover:border-gray-400'
+                      }`}
+                  >
+                    <span>{CATEGORY_EMOJI[item.category.slug] ?? '📰'}</span>
+                    {item.category.name}
+                  </Link>
+                ))}
+              </div>
+            </div>
+          )}
+        </section>
+
+        {/* ── 2. 관리자 퀵메뉴 ── */}
+        {user?.role === 'admin' && (
+          <section className="bg-blue-50 dark:bg-[#1E2530] rounded-2xl border border-blue-100
+                               dark:border-blue-900/40 p-4">
+            <p className="text-[11px] font-semibold text-blue-500 dark:text-blue-400 mb-3">관리자</p>
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                { href: '/admin/news/create', icon: '✏️', label: '뉴스 작성' },
+                { href: '/admin/news',        icon: '📋', label: '뉴스 관리' },
+                { href: '/admin/stats',       icon: '📊', label: '통계 분석' },
+              ].map(({ href, icon, label }) => (
+                <Link
+                  key={href}
+                  href={href}
+                  className="flex flex-col items-center gap-1.5 py-3 bg-white dark:bg-[#2A2A2A]
+                             rounded-xl text-blue-600 dark:text-blue-300 hover:shadow-sm transition"
+                >
+                  <span className="text-lg">{icon}</span>
+                  <span className="text-[11px] font-medium">{label}</span>
+                </Link>
+              ))}
+            </div>
+          </section>
         )}
 
-        {/* 나의 활동 */}
-        <div className="pb-6 border-b border-gray-200 dark:border-gray-800">
-          <div className="flex items-center gap-2 mb-4">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="text-gray-500" strokeWidth="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-            <span className="font-bold text-sm">나의 활동</span>
-          </div>
-          <div className="grid grid-cols-3 gap-3">
-            <Link href="/mypage/bookmarks">
-              <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-transparent rounded-xl p-4 hover:bg-gray-50 dark:hover:bg-gray-700 transition cursor-pointer">
-                <div className="text-xl font-bold">{stats.bookmarks}</div>
-                <div className="text-xs text-gray-500 mt-1">북마크</div>
-              </div>
+        {/* ── 3. 최근 북마크 ── */}
+        <section className="bg-white dark:bg-[#1E1E1E] rounded-2xl border border-gray-100 dark:border-[#2E2E2E] p-5">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-white">최근 저장한 뉴스</h3>
+            <Link href="/mypage/bookmarks"
+              className="text-xs text-blue-500 hover:text-blue-400 transition">
+              전체보기
             </Link>
-            <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-transparent rounded-xl p-4">
-              <div className="text-xl font-bold">{stats.likes}</div>
-              <div className="text-xs text-gray-500 mt-1">좋아요</div>
-            </div>
-            <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-transparent rounded-xl p-4">
-              <div className="text-xl font-bold">{stats.comments}</div>
-              <div className="text-xs text-gray-500 mt-1">댓글</div>
-            </div>
           </div>
-        </div>
 
-        {/* 저장한 뉴스 */}
-        <div className="pb-6 border-b border-gray-200 dark:border-gray-800">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="text-gray-500" strokeWidth="2"><path d="m19 21-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
-              <span className="font-bold text-sm">저장한 뉴스</span>
-            </div>
-            <Link href="/mypage/bookmarks" className="text-xs text-blue-500 dark:text-blue-400 hover:underline">전체보기</Link>
-          </div>
           {bookmarks.length > 0 ? (
-            <div className="flex flex-col gap-0">
-              {bookmarks.map((bookmark) => (
-                <Link key={bookmark.id} href={`/news/${bookmark.news?.id}`}>
-                  <div className="flex gap-3 py-3 border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-900 transition px-2 -mx-2 rounded-lg">
-                    {getImageUrl(bookmark.news?.thumbnailUrl) ? (
-                      <img src={getImageUrl(bookmark.news?.thumbnailUrl)} alt=""
-                        className="w-16 h-12 rounded-lg object-cover flex-shrink-0" />
-                    ) : (
-                      <div className="w-16 h-12 bg-gray-100 dark:bg-gray-700 rounded-lg flex-shrink-0 flex items-center justify-center text-gray-400 dark:text-gray-500 text-xs">없음</div>
-                    )}
-                    <div className="flex-1">
-                      <p className="text-sm font-medium line-clamp-2 text-gray-900 dark:text-gray-200">{bookmark.news?.title}</p>
-                      <p className="text-xs text-gray-500 mt-1">{new Date(bookmark.createdAt).toLocaleDateString('ko-KR')}</p>
-                    </div>
+            <div className="flex flex-col divide-y divide-gray-50 dark:divide-[#2E2E2E]">
+              {bookmarks.map((bm) => (
+                <Link key={bm.id} href={`/news/${bm.news?.id}`}
+                  className="group flex gap-3 items-center py-3 first:pt-0 last:pb-0">
+                  <div className="w-16 h-12 rounded-xl overflow-hidden flex-shrink-0 bg-gray-100 dark:bg-[#2A2A2A] relative">
+                    {getImageUrl(bm.news?.thumbnailUrl)
+                      ? <Image src={getImageUrl(bm.news?.thumbnailUrl)} alt=""
+                          fill className="object-cover group-hover:scale-105 transition-transform" />
+                      : <div className="w-full h-full bg-gray-200 dark:bg-[#3A3A3A]" />
+                    }
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-gray-800 dark:text-gray-100 line-clamp-2 leading-snug
+                                  group-hover:text-blue-500 transition-colors">
+                      {bm.news?.title}
+                    </p>
+                    <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-1">
+                      {new Date(bm.createdAt).toLocaleDateString('ko-KR')}
+                    </p>
                   </div>
                 </Link>
               ))}
             </div>
           ) : (
-            <p className="text-sm text-gray-500">저장한 뉴스가 없어요</p>
-          )}
-        </div>
-
-        {/* 구독 설정 */}
-        <div className="pb-6 border-b border-gray-200 dark:border-gray-800">
-          <div className="flex items-center gap-2 mb-4">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="text-gray-500" strokeWidth="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-            <span className="font-bold text-sm">구독 설정</span>
-          </div>
-          {subscription ? (
-            <div className="flex flex-col gap-3">
-              <div className="flex justify-between items-center">
-                <div>
-                  <div className="text-sm text-gray-900 dark:text-gray-200">데일리 뉴스레터</div>
-                  <div className="text-xs text-gray-500">매일 오전 수신 중</div>
-                </div>
-                <div className={`w-11 h-6 rounded-full flex items-center px-0.5 transition ${subscription.dailyActive ? 'bg-blue-600 justify-end' : 'bg-gray-300 dark:bg-gray-700 justify-start'}`}>
-                  <div className="w-5 h-5 rounded-full bg-white shadow-sm" />
-                </div>
-              </div>
-              <div className="flex justify-between items-center">
-                <div>
-                  <div className="text-sm text-gray-900 dark:text-gray-200">주간 뉴스레터</div>
-                  <div className="text-xs text-gray-500">매주 월요일 수신 중</div>
-                </div>
-                <div className={`w-11 h-6 rounded-full flex items-center px-0.5 transition ${subscription.weeklyActive ? 'bg-blue-600 justify-end' : 'bg-gray-300 dark:bg-gray-700 justify-start'}`}>
-                  <div className="w-5 h-5 rounded-full bg-white shadow-sm" />
-                </div>
-              </div>
-              <button onClick={handleUnsubscribe} className="mt-2 text-sm text-red-500 dark:text-red-400 hover:text-red-600 dark:hover:text-red-300 transition text-left">
-                구독 해지
-              </button>
-            </div>
-          ) : (
-            <div className="flex flex-col gap-3">
-              <p className="text-sm text-gray-500">아직 구독하지 않았어요</p>
-              <button onClick={handleSubscribe}
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white rounded-lg py-2.5 text-sm font-medium transition shadow-sm">
-                뉴스레터 구독하기
-              </button>
+            <div className="py-8 text-center text-sm text-gray-400 dark:text-gray-500
+                            bg-gray-50 dark:bg-[#121212] rounded-xl border border-dashed
+                            border-gray-200 dark:border-[#3A3A3A]">
+              아직 저장한 뉴스가 없어요 📌
             </div>
           )}
-        </div>
+        </section>
 
-        {/* 설정 */}
-        <div className="flex flex-col">
-          <div className="flex justify-between items-center py-4 border-b border-gray-200 dark:border-gray-800">
-            <div className="flex items-center gap-3">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="text-gray-500" strokeWidth="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0"/></svg>
-              <span className="text-sm text-gray-700 dark:text-gray-200">알림 설정</span>
+        {/* ── 4. 환경설정 ── */}
+        <section className="bg-white dark:bg-[#1E1E1E] rounded-2xl border border-gray-100
+                             dark:border-[#2E2E2E] overflow-hidden">
+
+          {/* 뉴스레터 */}
+          <div className="p-5 border-b border-gray-50 dark:border-[#2E2E2E]">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-sm font-semibold text-gray-900 dark:text-white">뉴스레터 구독</span>
+              {subscription && (
+                <button onClick={handleUnsubscribe}
+                  className="text-[11px] text-gray-400 hover:text-red-500 transition">
+                  해지
+                </button>
+              )}
             </div>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="text-gray-400" strokeWidth="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+            {subscription ? (
+              <div className="flex flex-col gap-3 mt-3">
+                {[
+                  { label: '데일리 브리핑', sub: '매일 오전 8시', type: 'dailyActive' as const, active: subscription.dailyActive },
+                  { label: '위클리 딥다이브', sub: '매주 월요일', type: 'weeklyActive' as const, active: subscription.weeklyActive },
+                ].map(({ label, sub, type, active }) => (
+                  <div key={label} className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-gray-800 dark:text-gray-100">{label}</p>
+                      <p className="text-[11px] text-gray-400 dark:text-gray-500">{sub}</p>
+                    </div>
+                    {/* 빈 함수 대신 위에서 만든 함수를 연결! */}
+                    <Toggle on={active} onToggle={() => handleToggleSubscription(type)} />
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="mt-3">
+                <p className="text-xs text-gray-400 dark:text-gray-400 mb-3">
+                  최신 IT 트렌드를 메일로 받아보세요!
+                </p>
+                <button onClick={handleSubscribe}
+                  className="w-full py-2.5 bg-gray-900 dark:bg-white text-white dark:text-gray-900
+                             rounded-xl text-sm font-semibold hover:opacity-90 transition">
+                  무료로 구독하기
+                </button>
+              </div>
+            )}
           </div>
-          <div className="flex justify-between items-center py-4 border-b border-gray-200 dark:border-gray-800">
-            <div className="flex items-center gap-3">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="text-gray-500" strokeWidth="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/></svg>
-              <span className="text-sm text-gray-700 dark:text-gray-200">다크모드</span>
-            </div>
-            {/* ✅ 5. 다크모드 버튼 */}
-            <button onClick={toggleDarkMode}
-              className={`w-11 h-6 rounded-full flex items-center px-0.5 transition ${isDark ? 'bg-blue-600 justify-end' : 'bg-gray-300 justify-start'}`}>
-              <div className="w-5 h-5 rounded-full bg-white shadow-sm" />
-            </button>
-          </div>
-          <button onClick={handleLogout} className="flex items-center gap-3 py-4 hover:bg-red-50 dark:hover:bg-red-900/10 px-2 -mx-2 rounded-lg transition">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="text-red-500 dark:text-red-400" strokeWidth="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-            <span className="text-sm text-red-500 dark:text-red-400">로그아웃</span>
+
+          {/* 메뉴 아이템들 */}
+          {[
+            {
+              icon: '🔔',
+              label: '푸시 알림',
+              type: 'link' as const,
+              href: '/mypage/notifications',
+            },
+            {
+              icon: isDark ? '☀️' : '🌙',
+              label: '다크 모드',
+              type: 'toggle' as const,
+              on: isDark,
+              onToggle: () => setTheme(isDark ? 'light' : 'dark'),
+            },
+            {
+              icon: '🔒',
+              label: '비밀번호 변경',
+              type: 'link' as const,
+              href: '/mypage/settings',
+            },
+          ].map((item) => (
+            item.type === 'link' ? (
+              <Link key={item.label} href={item.href!}
+                className="flex items-center gap-3 px-5 py-4 border-b border-gray-50
+                           dark:border-[#2E2E2E] hover:bg-gray-50 dark:hover:bg-[#2A2A2A] transition">
+                <span className="text-base w-5 text-center">{item.icon}</span>
+                <span className="flex-1 text-sm text-gray-800 dark:text-gray-100">{item.label}</span>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                  className="text-gray-300 dark:text-gray-500" strokeWidth="2.5">
+                  <polyline points="9 18 15 12 9 6" />
+                </svg>
+              </Link>
+            ) : (
+              <div key={item.label}
+                className="flex items-center gap-3 px-5 py-4 border-b border-gray-50 dark:border-[#2E2E2E]">
+                <span className="text-base w-5 text-center">{item.icon}</span>
+                <span className="flex-1 text-sm text-gray-800 dark:text-gray-100">{item.label}</span>
+                <Toggle on={item.on!} onToggle={item.onToggle!} />
+              </div>
+            )
+          ))}
+
+          {/* 로그아웃 */}
+          <button onClick={handleLogout}
+            className="w-full flex items-center gap-3 px-5 py-4
+                       hover:bg-red-50 dark:hover:bg-red-950/30 transition group rounded-b-2xl">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              className="text-red-400 dark:text-red-500 group-hover:text-red-500 dark:group-hover:text-red-400 transition" strokeWidth="2">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+              <polyline points="16 17 21 12 16 7" />
+              <line x1="21" y1="12" x2="9" y2="12" />
+            </svg>
+            <span className="text-sm text-red-500">로그아웃</span>
           </button>
-        </div>
-      </main>
+        </section>
 
-      {/* 하단 네비게이션 */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-950 border-t border-gray-200 dark:border-gray-800 transition-colors duration-200">
-        <div className="max-w-5xl mx-auto flex">
-          <Link href="/" className="flex-1 flex flex-col items-center gap-1 py-3 hover:bg-gray-50 dark:hover:bg-gray-900 transition">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="text-gray-500" strokeWidth="2"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
-            <span className="text-xs text-gray-500">홈</span>
-          </Link>
-          <Link href="/search" className="flex-1 flex flex-col items-center gap-1 py-3 hover:bg-gray-50 dark:hover:bg-gray-900 transition">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="text-gray-500" strokeWidth="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-            <span className="text-xs text-gray-500">탐색</span>
-          </Link>
-          <Link href="/mypage/bookmarks" className="flex-1 flex flex-col items-center gap-1 py-3 hover:bg-gray-50 dark:hover:bg-gray-900 transition">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="text-gray-500" strokeWidth="2"><path d="m19 21-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
-            <span className="text-xs text-gray-500">저장</span>
-          </Link>
-          <Link href="/mypage" className="flex-1 flex flex-col items-center gap-1 py-3 bg-blue-50/50 dark:bg-blue-900/10">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" className="text-blue-600 dark:text-blue-500"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-            <span className="text-xs font-medium text-blue-600 dark:text-blue-500">마이</span>
-          </Link>
-        </div>
-      </nav>
+      </main>
     </div>
   );
 }

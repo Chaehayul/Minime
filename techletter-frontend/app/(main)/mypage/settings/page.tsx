@@ -64,9 +64,9 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white pb-24">
+    <div className="min-h-screen pb-24 transition-colors duration-200">
       {/* 상단 헤더 */}
-      <header className="sticky top-0 z-50 bg-gray-950 border-b border-gray-800">
+      <header className="sticky top-0 z-50 bg-white dark:bg-[#171717] border-b border-gray-200 dark:border-gray-800 transition-colors duration-200">
         <div className="max-w-3xl mx-auto px-4 h-14 flex items-center gap-3">
           <button onClick={() => router.back()} className="text-gray-400 hover:text-white transition">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">

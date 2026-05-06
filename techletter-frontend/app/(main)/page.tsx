@@ -1,5 +1,4 @@
 import MobileFrame from "@/components/layout/MobileFrame";
-import BottomNav from "@/components/layout/BottomNav";
 import NewsCard from "@/components/news/NewsCard";
 import NewsListItem from "@/components/news/NewsListItem";
 import { News } from "@/types/news";
@@ -62,8 +61,8 @@ export default function HomePage() {
         </div>
       </div>
 
-      {/* 배너: globals.css에 수정한 dashed-box 클래스가 알아서 색을 바꿉니다 */}
-      <div className="dashed-box mb-5 flex h-36 items-center justify-center text-gray-500 dark:text-gray-400 transition-colors">
+      {/* 배너: 라이트 모드에서도 어둡게 고정 */}
+      <div className="mb-5 flex h-36 items-center justify-center bg-[#1a1c2e] border border-gray-800 text-gray-300 transition-colors">
         이번 주 핫뉴스 배너
       </div>
 
@@ -107,7 +106,6 @@ export default function HomePage() {
         ))}
       </div>
 
-      <BottomNav />
     </MobileFrame>
   );
 }

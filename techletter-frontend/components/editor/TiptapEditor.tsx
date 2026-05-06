@@ -469,10 +469,10 @@ export default function TiptapEditor({ content, onChange, onAutoSave }: Props) {
           `}
         />
       ) : (
-        <div className={`bg-white text-gray-900 px-8 py-6 overflow-y-auto ${isFullscreen ? 'flex-1' : 'min-h-[400px]'}`}>
+        <div className={`card-dark px-8 py-6 overflow-y-auto ${isFullscreen ? 'flex-1' : 'min-h-[400px]'}`}>
           <div className="max-w-2xl mx-auto">
             <div className="flex items-center justify-between mb-6 pb-3 border-b border-gray-200">
-              <span className="text-sm text-gray-500 font-medium">📖 독자 미리보기</span>
+              <span className="text-sm text-gray-500 dark:text-gray-400 font-medium">📖 독자 미리보기</span>
               <button onClick={() => setIsPreview(false)} className="text-sm text-blue-600 hover:underline font-medium">
                 ← 편집으로 돌아가기
               </button>

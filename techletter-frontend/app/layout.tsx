@@ -1,11 +1,12 @@
 import './globals.css';
 import type { Metadata } from 'next';
-import { ThemeProvider } from '@/components/ThemeProvider'; // ✅ 1. 추가
+import { ThemeProvider } from '@/components/ThemeProvider';
 import Chatbot from '@/components/common/Chatbot';
+import BottomNav from '@/components/layout/BottomNav';
 
 export const metadata: Metadata = {
-  title: 'TechLetter',
-  description: 'IT 트렌드를 한눈에',
+  title: 'MINIME',
+  description: 'AI가 요약해주는 나만의 IT 뉴스레터',
 };
 
 export default function RootLayout({
@@ -22,6 +23,7 @@ export default function RootLayout({
           {children}
           <Chatbot />
         </ThemeProvider>
+        <BottomNav />
       </body>
     </html>
   );

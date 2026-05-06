@@ -49,8 +49,8 @@ export default function BookmarksPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white pb-24">
-      <header className="sticky top-0 z-50 bg-gray-950 border-b border-gray-800">
+    <div className="min-h-screen pb-24 transition-colors duration-200">
+      <header className="sticky top-0 z-50 bg-white dark:bg-[#171717] border-b border-gray-200 dark:border-gray-800 transition-colors duration-200">
         <div className="max-w-3xl mx-auto px-4 h-14 flex items-center gap-3">
           <button onClick={() => router.back()} className="text-gray-400 hover:text-white transition">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="15 18 9 12 15 6"/></svg>
@@ -109,28 +109,6 @@ export default function BookmarksPage() {
           </div>
         )}
       </main>
-
-      {/* 하단 네비게이션 */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-gray-950 border-t border-gray-800">
-        <div className="max-w-5xl mx-auto flex">
-          <Link href="/" className="flex-1 flex flex-col items-center gap-1 py-3">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="2"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
-            <span className="text-xs text-gray-500">홈</span>
-          </Link>
-          <Link href="/search" className="flex-1 flex flex-col items-center gap-1 py-3">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-            <span className="text-xs text-gray-500">탐색</span>
-          </Link>
-          <Link href="/mypage/bookmarks" className="flex-1 flex flex-col items-center gap-1 py-3">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="#2563EB"><path d="m19 21-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
-            <span className="text-xs text-blue-500">저장</span>
-          </Link>
-          <Link href="/mypage" className="flex-1 flex flex-col items-center gap-1 py-3">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-            <span className="text-xs text-gray-500">마이</span>
-          </Link>
-        </div>
-      </nav>
     </div>
   );
 }
