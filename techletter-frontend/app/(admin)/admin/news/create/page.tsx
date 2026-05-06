@@ -11,6 +11,14 @@ interface Category {
   slug: string;
 }
 
+interface NaverNews {
+  title: string;
+  description: string;
+  link: string;
+  originalLink?: string;
+  pubDate: string;
+}
+
 export default function AdminNewsCreatePage() {
   const router = useRouter();
   const [categories, setCategories] = useState<Category[]>([]);
@@ -30,6 +38,11 @@ export default function AdminNewsCreatePage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [thumbnailUploading, setThumbnailUploading] = useState(false);
+  const [curationKeyword, setCurationKeyword] = useState('AI');
+  const [naverNews, setNaverNews] = useState<NaverNews[]>([]);
+  const [selectedLinks, setSelectedLinks] = useState<string[]>([]);
+  const [naverLoading, setNaverLoading] = useState(false);
+  const [curationError, setCurationError] = useState('');
   const thumbnailRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -59,6 +72,72 @@ export default function AdminNewsCreatePage() {
   };
 
   const removeTag = (tag: string) => setForm(f => ({ ...f, tags: f.tags.filter(t => t !== tag) }));
+
+  const searchNaverNews = async () => {
+    const keyword = curationKeyword.trim();
+    if (!keyword) {
+      setCurationError('검색어를 입력해주세요.');
+      return;
+    }
+
+    setNaverLoading(true);
+    setCurationError('');
+    try {
+      const res = await api.get('/news/naver/search', {
+        params: { query: keyword, display: 10, sort: 'date' },
+      });
+      setNaverNews(res.data.items || []);
+      setSelectedLinks([]);
+    } catch (err: any) {
+      setNaverNews([]);
+      setCurationError(err.response?.data?.message || '네이버 뉴스를 불러오지 못했습니다.');
+    } finally {
+      setNaverLoading(false);
+    }
+  };
+
+  const toggleSelectedNews = (link: string) => {
+    setSelectedLinks((links) =>
+      links.includes(link) ? links.filter((item) => item !== link) : [...links, link],
+    );
+  };
+
+  const createCurationDraft = () => {
+    const selectedNews = naverNews.filter((news) => selectedLinks.includes(news.link)).slice(0, 5);
+    if (selectedNews.length === 0) {
+      setCurationError('큐레이션에 넣을 기사를 선택해주세요.');
+      return;
+    }
+
+    const keyword = curationKeyword.trim() || '테크';
+    const title = `오늘의 ${keyword} 뉴스 큐레이션`;
+    const lead = `${keyword} 관련 최신 뉴스 ${selectedNews.length}건을 모았습니다. 원문은 링크로 확인하고, TechLetter 관점에서 흐름을 정리했습니다.`;
+    const content = [
+      `<h2>${title}</h2>`,
+      `<p>${lead}</p>`,
+      '<h3>핵심 기사</h3>',
+      ...selectedNews.map((news, index) => {
+        const sourceUrl = news.originalLink || news.link;
+        return [
+          `<h4>${index + 1}. ${news.title}</h4>`,
+          `<p>${news.description}</p>`,
+          `<p><a href="${sourceUrl}" target="_blank" rel="noreferrer">원문 보기</a></p>`,
+        ].join('');
+      }),
+      '<h3>TechLetter 코멘트</h3>',
+      `<p>오늘 ${keyword} 관련 기사들을 보면 기술 이슈가 서비스, 정책, 산업 흐름으로 확장되고 있다는 점이 눈에 띕니다. 각 원문을 확인하며 변화의 방향을 계속 살펴볼 필요가 있습니다.</p>`,
+    ].join('');
+
+    setForm((current) => ({
+      ...current,
+      title,
+      lead,
+      content,
+      metaDescription: lead,
+      tags: Array.from(new Set([...current.tags, keyword, '큐레이션'])),
+    }));
+    setCurationError('');
+  };
 
   const handleSubmit = async (status: string) => {
   if (!form.title.trim()) { setError('제목을 입력해주세요.'); return; }
@@ -106,6 +185,82 @@ export default function AdminNewsCreatePage() {
 
       <main className="max-w-3xl mx-auto px-4 py-6 flex flex-col gap-5">
         {error && <div className="p-3 bg-red-900 text-red-300 rounded-lg text-sm">{error}</div>}
+
+        <section className="rounded-xl border border-gray-800 bg-gray-900 p-4">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-semibold text-white">네이버 뉴스 큐레이션</h2>
+              <p className="mt-1 text-xs text-gray-500">
+                기사 제목과 설명, 원문 링크만 사용해 초안을 만듭니다.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={createCurationDraft}
+              disabled={selectedLinks.length === 0}
+              className="rounded-lg bg-[#03C75A] px-3 py-2 text-xs font-medium text-white transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              초안 만들기
+            </button>
+          </div>
+
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={curationKeyword}
+              onChange={(e) => setCurationKeyword(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && searchNaverNews()}
+              placeholder="검색어"
+              className="min-w-0 flex-1 rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white outline-none focus:ring-2 focus:ring-[#03C75A]"
+            />
+            <button
+              type="button"
+              onClick={searchNaverNews}
+              disabled={naverLoading}
+              className="rounded-lg border border-gray-700 px-3 py-2 text-sm text-gray-200 transition hover:bg-gray-800 disabled:opacity-50"
+            >
+              {naverLoading ? '불러오는 중' : '뉴스 불러오기'}
+            </button>
+          </div>
+
+          {curationError && (
+            <div className="mt-3 rounded-lg bg-red-950/60 p-3 text-xs text-red-200">
+              {curationError}
+            </div>
+          )}
+
+          {naverNews.length > 0 && (
+            <div className="mt-4 flex max-h-80 flex-col overflow-y-auto rounded-lg border border-gray-800">
+              {naverNews.map((news) => {
+                const selected = selectedLinks.includes(news.link);
+                return (
+                  <label
+                    key={`${news.link}-${news.pubDate}`}
+                    className="flex cursor-pointer gap-3 border-b border-gray-800 p-3 last:border-b-0 hover:bg-gray-800"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selected}
+                      onChange={() => toggleSelectedNews(news.link)}
+                      className="mt-1 h-4 w-4 accent-[#03C75A]"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="mb-1 text-xs text-gray-500">
+                        {new Date(news.pubDate).toLocaleString('ko-KR')}
+                      </div>
+                      <p className="line-clamp-2 text-sm font-medium text-gray-100">
+                        {news.title}
+                      </p>
+                      <p className="mt-1 line-clamp-2 text-xs leading-5 text-gray-500">
+                        {news.description}
+                      </p>
+                    </div>
+                  </label>
+                );
+              })}
+            </div>
+          )}
+        </section>
 
         {/* 제목 */}
         <input type="text" placeholder="뉴스 제목 입력" value={form.title}

@@ -15,6 +15,7 @@ export enum SocialProvider {
   EMAIL = 'email',
   KAKAO = 'kakao',
   GOOGLE = 'google',
+  NAVER = 'naver',
 }
 
 @Entity('users')

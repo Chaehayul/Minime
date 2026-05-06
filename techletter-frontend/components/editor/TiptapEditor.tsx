@@ -121,6 +121,11 @@ export default function TiptapEditor({ content, onChange, onAutoSave }: Props) {
     return () => { if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current); };
   }, []);
 
+  useEffect(() => {
+    if (!editor || editor.getHTML() === content) return;
+    editor.commands.setContent(content, { emitUpdate: false });
+  }, [content, editor]);
+
   if (!editor) return null;
 
   const applyFontSize = (size: string) => {

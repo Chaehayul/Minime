@@ -134,6 +134,16 @@ export default function SignupPage() {
           >
             Kakao로 가입하기
           </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              window.location.href = `${authBaseUrl}/auth/naver/signup`;
+            }}
+            className="w-full rounded-lg bg-[#03C75A] px-4 py-2.5 text-sm font-medium text-white transition hover:brightness-95"
+          >
+            Naver로 가입하기
+          </button>
         </div>
 
         <div className="mt-6 text-center text-sm text-gray-500 dark:text-gray-400">

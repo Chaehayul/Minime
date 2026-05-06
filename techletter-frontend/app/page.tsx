@@ -23,6 +23,13 @@ interface User {
   nickname: string;
 }
 
+interface NaverNews {
+  title: string;
+  description: string;
+  link: string;
+  pubDate: string;
+}
+
 export default function HomePage() {
   const [newsList, setNewsList] = useState<News[]>([]);
   const [topNews, setTopNews] = useState<News[]>([]);
@@ -32,6 +39,9 @@ export default function HomePage() {
   const [newsLoading, setNewsLoading] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [user, setUser] = useState<User | null>(null);
+  const [naverNews, setNaverNews] = useState<NaverNews[]>([]);
+  const [naverLoading, setNaverLoading] = useState(true);
+  const [naverError, setNaverError] = useState('');
 
   useEffect(() => {
     const token = localStorage.getItem('accessToken');
@@ -57,6 +67,31 @@ export default function HomePage() {
       }
     };
     fetchInitial();
+  }, []);
+
+  useEffect(() => {
+    const fetchNaverNews = async () => {
+      setNaverLoading(true);
+      setNaverError('');
+
+      try {
+        const res = await api.get('/news/naver/search', {
+          params: {
+            query: 'AI',
+            display: 5,
+            sort: 'date',
+          },
+        });
+        setNaverNews(res.data.items || []);
+      } catch (err: any) {
+        setNaverNews([]);
+        setNaverError(err.response?.data?.message || '네이버 뉴스를 불러오지 못했습니다.');
+      } finally {
+        setNaverLoading(false);
+      }
+    };
+
+    fetchNaverNews();
   }, []);
 
   useEffect(() => {
@@ -163,6 +198,50 @@ export default function HomePage() {
         </div>
 
         {/* 최신 뉴스 목록 */}
+        <section>
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="text-base font-bold">네이버 뉴스 API 확인</h2>
+          </div>
+
+          {naverLoading ? (
+            <div className="flex flex-col gap-3">
+              {[1, 2, 3].map((item) => (
+                <div key={item} className="h-24 animate-pulse rounded-xl bg-gray-800" />
+              ))}
+            </div>
+          ) : naverError ? (
+            <div className="rounded-xl border border-red-900/60 bg-red-950/30 px-4 py-5 text-sm text-red-200">
+              {naverError}
+            </div>
+          ) : naverNews.length > 0 ? (
+            <div className="flex flex-col rounded-xl border border-gray-800 bg-gray-900">
+              {naverNews.map((news) => (
+                <a
+                  key={`${news.link}-${news.pubDate}`}
+                  href={news.link}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="border-b border-gray-800 px-4 py-4 last:border-b-0 hover:bg-gray-800"
+                >
+                  <div className="mb-2 text-xs text-gray-500">
+                    {new Date(news.pubDate).toLocaleString('ko-KR')}
+                  </div>
+                  <h3 className="mb-1 line-clamp-2 text-sm font-semibold text-gray-100">
+                    {news.title}
+                  </h3>
+                  <p className="line-clamp-2 text-xs leading-5 text-gray-500">
+                    {news.description}
+                  </p>
+                </a>
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-xl border border-gray-800 bg-gray-900 px-4 py-5 text-sm text-gray-400">
+              네이버 뉴스 검색 결과가 없습니다.
+            </div>
+          )}
+        </section>
+
         <section>
           <h2 className="font-bold text-base mb-4">
             {activeCategoryId === null ? '최신 뉴스' : `${categories.find(c => c.id === activeCategoryId)?.name} 뉴스`}
