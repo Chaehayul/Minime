@@ -101,4 +101,7 @@ export class News {
 
   @UpdateDateColumn()
   updatedAt!: Date;
+  
+  @Column({ type: 'text', nullable: true })
+  aiSummary?: string;
 }

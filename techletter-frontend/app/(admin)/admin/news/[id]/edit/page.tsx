@@ -105,14 +105,14 @@ export default function AdminNewsEditPage() {
   const removeTag = (tag: string) => setForm(f => ({ ...f, tags: f.tags.filter(t => t !== tag) }));
 
   if (fetching) return (
-    <div className="min-h-screen bg-gray-950 flex items-center justify-center">
-      <div className="text-gray-400">불러오는 중...</div>
+    <div className="min-h-screen flex items-center justify-center transition-colors duration-200">
+      <div className="text-gray-500 dark:text-gray-400">불러오는 중...</div>
     </div>
   );
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white pb-10">
-      <header className="sticky top-0 z-50 bg-gray-950 border-b border-gray-800">
+    <div className="min-h-screen pb-10 transition-colors duration-200">
+      <header className="sticky top-0 z-50 bg-white dark:bg-[#171717] border-b border-gray-200 dark:border-gray-800 transition-colors duration-200">
         <div className="max-w-3xl mx-auto px-4 h-14 flex items-center gap-3">
           <button onClick={() => router.back()} className="text-gray-400 hover:text-white transition">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="15 18 9 12 15 6"/></svg>

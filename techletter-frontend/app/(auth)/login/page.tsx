@@ -27,8 +27,8 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-50 dark:bg-gray-900">
-      <div className="w-full max-w-md rounded-2xl bg-white p-8 shadow dark:bg-gray-800">
+    <div className="flex min-h-screen items-center justify-center transition-colors duration-200">
+      <div className="w-full max-w-md card-dark p-8 shadow">
         <Link href="/">
           <h1 className="mb-2 cursor-pointer text-center text-2xl font-bold text-gray-900 transition hover:opacity-80 dark:text-white">
             TechLetter
@@ -54,7 +54,7 @@ export default function LoginPage() {
               placeholder="이메일 주소"
               value={form.email}
               onChange={(e) => setForm({ ...form, email: e.target.value })}
-              className="w-full rounded-lg border border-gray-200 bg-white px-4 py-2.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+              className="input-dark w-full px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               required
             />
           </div>
@@ -68,7 +68,7 @@ export default function LoginPage() {
               placeholder="비밀번호"
               value={form.password}
               onChange={(e) => setForm({ ...form, password: e.target.value })}
-              className="w-full rounded-lg border border-gray-200 bg-white px-4 py-2.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+              className="input-dark w-full px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               required
             />
           </div>
@@ -76,7 +76,7 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full rounded-lg bg-blue-600 py-2.5 text-sm font-medium text-white transition hover:bg-blue-700 disabled:opacity-50"
+            className="blue-btn w-full py-2.5 text-sm font-medium transition disabled:opacity-50"
           >
             {loading ? '로그인 중...' : '로그인'}
           </button>

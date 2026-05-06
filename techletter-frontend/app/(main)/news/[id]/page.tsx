@@ -89,19 +89,19 @@ export default function NewsDetailPage() {
   };
 
   if (loading) return (
-    <div className="min-h-screen bg-gray-950 flex items-center justify-center">
-      <div className="text-gray-500">로딩 중...</div>
+    <div className="min-h-screen flex items-center justify-center transition-colors duration-200">
+      <div className="text-gray-500 dark:text-gray-400">로딩 중...</div>
     </div>
   );
 
   if (!news) return (
-    <div className="min-h-screen bg-gray-950 flex items-center justify-center">
-      <div className="text-gray-500">뉴스를 찾을 수 없습니다.</div>
+    <div className="min-h-screen flex items-center justify-center transition-colors duration-200">
+      <div className="text-gray-500 dark:text-gray-400">뉴스를 찾을 수 없습니다.</div>
     </div>
   );
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white pb-20">
+    <div className="min-h-screen transition-colors duration-200 pb-20">
       {/* 헤더 */}
       <header className="sticky top-0 z-50 bg-gray-950 border-b border-gray-800">
         <div className="max-w-3xl mx-auto px-4 h-14 flex items-center gap-3">
