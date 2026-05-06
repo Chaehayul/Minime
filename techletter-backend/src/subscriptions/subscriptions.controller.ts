@@ -7,6 +7,7 @@ import {
   Body,
   Req,
   UseGuards,
+  ForbiddenException,
 } from '@nestjs/common';
 import { SubscriptionsService } from './subscriptions.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -83,5 +84,14 @@ export class SubscriptionsController {
       body.dailyActive,
       body.weeklyActive,
     );
+  }
+
+  // ✅ 관리자: 전체 구독자 목록 조회
+  @Get('admin/all')
+  async getAllSubscribers(@Req() req: any) {
+    if (req.user.role !== 'admin') {
+      throw new ForbiddenException('관리자만 접근 가능합니다.');
+    }
+    return this.subscriptionsService.getAllSubscribers();
   }
 }

@@ -1,6 +1,6 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { Subscription } from './subscription.entity';
 import { Payment } from './payment.entity';
 
@@ -25,7 +25,6 @@ export class SubscriptionsService {
     paymentMethodBrand: string,
     paymentMethodLast4: string,
   ): Promise<Subscription> {
-    // 이미 구독 중인지 확인
     const existing = await this.subscriptionRepo.findOne({ where: { userId } });
     if (existing && existing.status === 'ACTIVE') {
       throw new BadRequestException('이미 구독 중입니다.');
@@ -42,7 +41,6 @@ export class SubscriptionsService {
     const formatDate = (d: Date) => d.toISOString().split('T')[0];
 
     if (existing) {
-      // 재구독
       existing.status = 'ACTIVE';
       existing.planType = planType;
       existing.startDate = formatDate(today);
@@ -53,13 +51,10 @@ export class SubscriptionsService {
       existing.dailyActive = planType === 'daily' || planType === 'all';
       existing.weeklyActive = planType === 'weekly' || planType === 'all';
       await this.subscriptionRepo.save(existing);
-
-      // 결제 내역 생성
       await this.createPaymentRecord(existing, today);
       return existing;
     }
 
-    // 신규 구독
     const subscription = this.subscriptionRepo.create({
       userId,
       status: 'ACTIVE',
@@ -108,7 +103,6 @@ export class SubscriptionsService {
     if (!subscription || subscription.status !== 'ACTIVE') {
       throw new BadRequestException('구독 중인 서비스가 없습니다.');
     }
-
     subscription.status = 'CANCELED';
     return this.subscriptionRepo.save(subscription);
   }
@@ -122,16 +116,13 @@ export class SubscriptionsService {
 
     subscription.status = 'ACTIVE';
 
-    // 기간이 이미 남아있으면 nextPaymentDate만 재설정
     const today = new Date();
     const endDate = new Date(subscription.endDate!);
     if (endDate > today) {
-      // 남은 기간 있음 → 종료일 기준으로 다음 결제일 설정
       const nextPayment = new Date(endDate);
       nextPayment.setDate(nextPayment.getDate() + 1);
       subscription.nextPaymentDate = nextPayment.toISOString().split('T')[0];
     } else {
-      // 기간 만료 → 오늘부터 새로 시작
       const newEnd = new Date(today);
       newEnd.setMonth(newEnd.getMonth() + 1);
       newEnd.setDate(newEnd.getDate() - 1);
@@ -158,7 +149,6 @@ export class SubscriptionsService {
     subscription.paymentMethodBrand = brand;
     subscription.paymentMethodLast4 = last4;
 
-    // 결제 실패 상태였으면 ACTIVE로 복구
     if (subscription.status === 'PAYMENT_FAILED') {
       subscription.status = 'ACTIVE';
     }
@@ -177,8 +167,6 @@ export class SubscriptionsService {
   // 만료된 구독 처리 스케줄러용
   async expireSubscriptions(): Promise<void> {
     const today = new Date().toISOString().split('T')[0];
-
-    // CANCELED 상태에서 endDate 지난 것들 EXPIRED로 변경
     await this.subscriptionRepo
       .createQueryBuilder()
       .update(Subscription)
@@ -200,5 +188,19 @@ export class SubscriptionsService {
     subscription.dailyActive = dailyActive;
     subscription.weeklyActive = weeklyActive;
     return this.subscriptionRepo.save(subscription);
+  }
+
+  // ✅ 관리자: 전체 구독자 목록 조회
+  async getAllSubscribers(): Promise<Subscription[]> {
+    return this.subscriptionRepo.find({
+      where: [
+        { status: 'ACTIVE' },
+        { status: 'CANCELED' },
+        { status: 'EXPIRED' },
+        { status: 'PAYMENT_FAILED' },
+      ],
+      relations: ['user'],
+      order: { createdAt: 'DESC' },
+    });
   }
 }

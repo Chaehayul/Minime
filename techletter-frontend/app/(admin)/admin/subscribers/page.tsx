@@ -53,77 +53,6 @@ const formatDate = (dateStr: string | null) => {
   return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`;
 };
 
-const MOCK_SUBSCRIBERS: Subscriber[] = [
-  {
-    id: 1,
-    user: { id: 1, email: 'dbfla020410@naver.com', nickname: '김하율' },
-    status: 'ACTIVE',
-    planType: 'all',
-    startDate: '2026-04-01',
-    endDate: '2026-04-30',
-    canceledAt: null,
-    nextPaymentDate: '2026-05-01',
-    paymentMethodBrand: 'VISA',
-    paymentMethodLast4: '1234',
-    dailyActive: true,
-    weeklyActive: true,
-    failReason: null,
-    failedAt: null,
-    createdAt: '2026-04-01',
-  },
-  {
-    id: 2,
-    user: { id: 2, email: 'jhdbwlsgus@naver.com', nickname: '이건홍' },
-    status: 'CANCELED',
-    planType: 'daily',
-    startDate: '2026-03-15',
-    endDate: '2026-04-14',
-    canceledAt: '2026-04-05',
-    nextPaymentDate: null,
-    paymentMethodBrand: 'MASTER',
-    paymentMethodLast4: '5678',
-    dailyActive: true,
-    weeklyActive: false,
-    failReason: null,
-    failedAt: null,
-    createdAt: '2026-03-15',
-  },
-  {
-    id: 3,
-    user: { id: 3, email: 'test3@kakao.com', nickname: '박결제' },
-    status: 'PAYMENT_FAILED',
-    planType: 'weekly',
-    startDate: '2026-04-10',
-    endDate: '2026-05-09',
-    canceledAt: null,
-    nextPaymentDate: '2026-05-10',
-    paymentMethodBrand: '일반카드',
-    paymentMethodLast4: '9999',
-    dailyActive: false,
-    weeklyActive: true,
-    failReason: '카드 한도 초과',
-    failedAt: '2026-04-29T09:00:00',
-    createdAt: '2026-04-10',
-  },
-  {
-    id: 4,
-    user: { id: 4, email: 'test4@naver.com', nickname: '최만료' },
-    status: 'EXPIRED',
-    planType: 'all',
-    startDate: '2026-02-01',
-    endDate: '2026-02-28',
-    canceledAt: null,
-    nextPaymentDate: null,
-    paymentMethodBrand: 'VISA',
-    paymentMethodLast4: '4321',
-    dailyActive: true,
-    weeklyActive: true,
-    failReason: null,
-    failedAt: null,
-    createdAt: '2026-02-01',
-  },
-];
-
 type QuickFilter = 'ALL' | 'EXPIRING_SOON' | 'PAYMENT_SOON' | 'NEW_30DAYS';
 
 export default function SubscribersPage() {
@@ -135,17 +64,16 @@ export default function SubscribersPage() {
   const [search, setSearch] = useState('');
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [sendingMailId, setSendingMailId] = useState<number | null>(null);
+  const [error, setError] = useState('');
 
   useEffect(() => {
     const fetchSubscribers = async () => {
       try {
-        // ✅ 백엔드 연동 시 아래 주석 해제
-        // const res = await api.get('/subscriptions/admin/all');
-        // setSubscribers(res.data);
-        await new Promise(r => setTimeout(r, 300));
-        setSubscribers(MOCK_SUBSCRIBERS);
-      } catch (err) {
-        console.error(err);
+        // ✅ 실제 API 연동
+        const res = await api.get('/subscriptions/admin/all');
+        setSubscribers(res.data);
+      } catch (err: any) {
+        setError(err.response?.data?.message || '구독자 목록을 불러오는데 실패했습니다.');
       } finally {
         setLoading(false);
       }
@@ -153,7 +81,6 @@ export default function SubscribersPage() {
     fetchSubscribers();
   }, []);
 
-  // 퀵 필터 적용
   const applyQuickFilter = (sub: Subscriber): boolean => {
     const today = new Date();
     const endDate = sub.endDate ? new Date(sub.endDate) : null;
@@ -185,15 +112,13 @@ export default function SubscribersPage() {
     return matchStatus && matchPlan && matchSearch && matchQuick;
   });
 
-  // 통계
   const stats = {
-    total:   subscribers.length,
-    active:  subscribers.filter(s => s.status === 'ACTIVE').length,
+    total:    subscribers.length,
+    active:   subscribers.filter(s => s.status === 'ACTIVE').length,
     canceled: subscribers.filter(s => s.status === 'CANCELED').length,
-    failed:  subscribers.filter(s => s.status === 'PAYMENT_FAILED').length,
+    failed:   subscribers.filter(s => s.status === 'PAYMENT_FAILED').length,
   };
 
-  // 플랜별 통계
   const planStats = {
     daily:  subscribers.filter(s => s.planType === 'daily').length,
     weekly: subscribers.filter(s => s.planType === 'weekly').length,
@@ -201,7 +126,6 @@ export default function SubscribersPage() {
   };
   const totalPlanCount = planStats.daily + planStats.weekly + planStats.all || 1;
 
-  // 결제 실패 안내 메일 재발송
   const handleResendFailMail = async (subId: number, email: string) => {
     if (!confirm(`${email}에게 결제수단 변경 안내 메일을 재발송할까요?`)) return;
     setSendingMailId(subId);
@@ -239,6 +163,13 @@ export default function SubscribersPage() {
       </header>
 
       <main className="max-w-6xl mx-auto px-4 py-6 flex flex-col gap-6">
+
+        {/* 에러 메시지 */}
+        {error && (
+          <div className="p-3 bg-red-900/50 border border-red-700 text-red-300 rounded-lg text-sm">
+            {error}
+          </div>
+        )}
 
         {/* 요약 통계 */}
         <div className="grid grid-cols-4 gap-4">
@@ -356,18 +287,14 @@ export default function SubscribersPage() {
 
               return (
                 <div key={sub.id} className="border-b border-gray-800 last:border-0">
-                  {/* 기본 행 */}
                   <button
                     onClick={() => setExpandedId(isExpanded ? null : sub.id)}
                     className="w-full grid grid-cols-7 gap-4 px-4 py-4 hover:bg-gray-800/50 transition items-center text-left"
                   >
-                    {/* 사용자 */}
                     <div className="col-span-2">
                       <div className="text-sm font-medium text-white">{sub.user.nickname}</div>
                       <div className="text-xs text-gray-500">{sub.user.email}</div>
                     </div>
-
-                    {/* 상태 / 플랜 */}
                     <div className="flex flex-col gap-1">
                       <span className={`text-xs px-2 py-0.5 rounded-full font-medium w-fit ${config.color} ${config.bg}`}>
                         {config.label}
@@ -378,25 +305,17 @@ export default function SubscribersPage() {
                         </span>
                       )}
                     </div>
-
-                    {/* 이용 기간 */}
                     <div className="text-xs text-gray-400">
                       {formatDate(sub.startDate)} ~<br />{formatDate(sub.endDate)}
                     </div>
-
-                    {/* 다음 결제일 */}
                     <div className="text-sm text-gray-300">
                       {formatDate(sub.nextPaymentDate)}
                     </div>
-
-                    {/* 결제 수단 */}
                     <div className="text-sm text-gray-300">
                       {sub.paymentMethodBrand && sub.paymentMethodLast4
                         ? `${sub.paymentMethodBrand} ****${sub.paymentMethodLast4}`
                         : '-'}
                     </div>
-
-                    {/* 수신 설정 */}
                     <div className="flex flex-col gap-1">
                       <span className={`text-xs ${sub.dailyActive ? 'text-blue-400' : 'text-gray-600'}`}>
                         {sub.dailyActive ? '● 데일리' : '○ 데일리'}
@@ -407,12 +326,9 @@ export default function SubscribersPage() {
                     </div>
                   </button>
 
-                  {/* 상세 펼침 */}
                   {isExpanded && (
                     <div className="px-4 pb-4 pt-3 bg-gray-800/30 border-t border-gray-800">
                       <div className="grid grid-cols-2 gap-4 mb-4">
-
-                        {/* 구독 상세 */}
                         <div className="bg-gray-900 rounded-xl p-4 flex flex-col gap-2">
                           <div className="text-xs text-gray-500 font-medium mb-1">구독 상세</div>
                           <div className="flex justify-between">
@@ -435,7 +351,6 @@ export default function SubscribersPage() {
                           </div>
                         </div>
 
-                        {/* 결제 실패 / 결제 수단 */}
                         <div className="bg-gray-900 rounded-xl p-4 flex flex-col gap-2">
                           <div className="text-xs text-gray-500 font-medium mb-1">결제 정보</div>
                           <div className="flex justify-between">
@@ -471,7 +386,6 @@ export default function SubscribersPage() {
                         </div>
                       </div>
 
-                      {/* 관리자 액션 */}
                       <div className="flex gap-2 flex-wrap">
                         {sub.status === 'PAYMENT_FAILED' && (
                           <button
@@ -497,7 +411,7 @@ export default function SubscribersPage() {
         </div>
 
         <p className="text-xs text-gray-600 text-center">
-          총 {filtered.length}명 표시 중 · 백엔드 연동 후 실제 데이터로 전환 예정
+          총 {filtered.length}명 표시 중
         </p>
       </main>
     </div>

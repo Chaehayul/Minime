@@ -42,61 +42,25 @@ const formatDateKo = (dateStr: string) => {
   return `${d.getMonth() + 1}월 ${d.getDate()}일`;
 };
 
-// ✅ 백엔드 연동 전 목업 데이터 (실제 연동 시 아래 fetchPayments 함수로 교체)
-const MOCK_PAYMENTS: Payment[] = [
-  {
-    id: 1,
-    paidAt: '2026-04-10T09:00:00',
-    amount: 3900,
-    status: 'SUCCESS',
-    periodStart: '2026-04-10',
-    periodEnd: '2026-05-09',
-    paymentMethodBrand: '신한카드',
-    paymentMethodLast4: '1234',
-    planType: 'all',
-  },
-  {
-    id: 2,
-    paidAt: '2026-03-10T09:00:00',
-    amount: 3900,
-    status: 'SUCCESS',
-    periodStart: '2026-03-10',
-    periodEnd: '2026-04-09',
-    paymentMethodBrand: '신한카드',
-    paymentMethodLast4: '1234',
-    planType: 'all',
-  },
-  {
-    id: 3,
-    paidAt: '2026-02-10T09:00:00',
-    amount: 3900,
-    status: 'FAILED',
-    periodStart: '2026-02-10',
-    periodEnd: '2026-03-09',
-    paymentMethodBrand: '신한카드',
-    paymentMethodLast4: '1234',
-    planType: 'all',
-  },
-];
-
 export default function PaymentsPage() {
   const router = useRouter();
   const [payments, setPayments] = useState<Payment[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [error, setError] = useState('');
 
   useEffect(() => {
     const fetchPayments = async () => {
       try {
-        // ✅ 실제 연동 시 아래 주석 해제하고 목업 데이터 제거
-        // const res = await api.get('/payments/me');
-        // setPayments(res.data);
-
-        // 목업 데이터 사용 (백엔드 미구현 상태)
-        await new Promise(r => setTimeout(r, 300)); // 로딩 시뮬레이션
-        setPayments(MOCK_PAYMENTS);
-      } catch {
-        router.push('/login');
+        // ✅ 실제 API 연동
+        const res = await api.get('/subscriptions/payments');
+        setPayments(res.data);
+      } catch (err: any) {
+        if (err.response?.status === 401) {
+          router.push('/login');
+        } else {
+          setError('결제 내역을 불러오는데 실패했습니다.');
+        }
       } finally {
         setLoading(false);
       }
@@ -112,7 +76,6 @@ export default function PaymentsPage() {
 
   return (
     <div className="min-h-screen bg-gray-950 text-white pb-24">
-      {/* 헤더 */}
       <header className="sticky top-0 z-50 bg-gray-950 border-b border-gray-800">
         <div className="max-w-3xl mx-auto px-4 h-14 flex items-center gap-3">
           <Link href="/mypage">
@@ -126,8 +89,14 @@ export default function PaymentsPage() {
 
       <main className="max-w-3xl mx-auto px-4 py-6">
 
+        {/* 에러 메시지 */}
+        {error && (
+          <div className="p-3 mb-4 bg-red-900/50 border border-red-700 text-red-300 rounded-lg text-sm">
+            {error}
+          </div>
+        )}
+
         {payments.length === 0 ? (
-          /* 결제 내역 없을 때 */
           <div className="flex flex-col items-center justify-center py-20 gap-4">
             <div className="w-16 h-16 rounded-full bg-gray-800 flex items-center justify-center">
               <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#4b5563" strokeWidth="1.5">
@@ -174,7 +143,6 @@ export default function PaymentsPage() {
                   onClick={() => setExpandedId(isExpanded ? null : payment.id)}
                   className="w-full text-left bg-gray-900 rounded-2xl p-4 transition hover:bg-gray-800"
                 >
-                  {/* 기본 정보 */}
                   <div className="flex justify-between items-start">
                     <div className="flex flex-col gap-1">
                       <div className="flex items-center gap-2">
@@ -203,7 +171,6 @@ export default function PaymentsPage() {
                     </div>
                   </div>
 
-                  {/* 상세 정보 (펼쳐졌을 때) */}
                   {isExpanded && (
                     <div className="mt-4 pt-4 border-t border-gray-700 flex flex-col gap-2.5">
                       <div className="flex justify-between">

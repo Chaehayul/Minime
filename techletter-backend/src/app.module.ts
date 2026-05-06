@@ -13,6 +13,8 @@ import { InteractionsModule } from './interactions/interactions.module';
 import { SubscriptionsModule } from './subscriptions/subscriptions.module';
 import { StatsModule } from './stats/stats.module';
 import { UploadModule } from './upload/upload.module';
+import { NewsletterModule } from './newsletter/newsletter.module';
+import { SearchModule } from './search/search.module';
 
 @Module({
   imports: [
@@ -42,6 +44,8 @@ import { UploadModule } from './upload/upload.module';
     SubscriptionsModule,
     StatsModule,
     UploadModule,
+    NewsletterModule,
+    SearchModule,
   ],
   controllers: [AppController],
   providers: [AppService],
