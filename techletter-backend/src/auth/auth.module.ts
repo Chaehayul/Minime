@@ -9,6 +9,7 @@ import { JwtStrategy } from './jwt.strategy';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { GoogleStrategy } from './google.strategy';
 import { KakaoStrategy } from './kakao.strategy';
+import { NaverStrategy } from './naver.strategy';
 
 @Module({
   imports: [
@@ -23,7 +24,7 @@ import { KakaoStrategy } from './kakao.strategy';
       }),
     }),
   ],
-  providers: [AuthService, JwtStrategy, JwtAuthGuard, GoogleStrategy, KakaoStrategy],
+  providers: [AuthService, JwtStrategy, JwtAuthGuard, GoogleStrategy, KakaoStrategy, NaverStrategy],
   controllers: [AuthController],
   exports: [AuthService, JwtAuthGuard],
 })

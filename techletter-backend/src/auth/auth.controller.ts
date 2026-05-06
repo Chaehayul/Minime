@@ -7,6 +7,7 @@ import { SignupDto } from './dto/signup.dto';
 import { LoginDto } from './dto/login.dto';
 import { GoogleLoginGuard, GoogleSignupGuard } from './google-oauth.guard';
 import { KakaoCallbackGuard, KakaoLoginGuard, KakaoSignupGuard } from './kakao-oauth.guard';
+import { NaverCallbackGuard, NaverLoginGuard, NaverSignupGuard } from './naver-oauth.guard';
 
 @Controller('auth')
 export class AuthController {
@@ -63,6 +64,29 @@ export class AuthController {
   @Get('kakao/callback')
   @UseGuards(KakaoCallbackGuard)
   async kakaoCallback(@Req() req, @Res() res: Response) {
+    try {
+      const result = await this.authService.socialLogin(req.user, this.getOauthMode(req));
+      return this.redirectWithToken(res, result.accessToken);
+    } catch (error) {
+      return this.redirectWithError(res, error);
+    }
+  }
+
+  @Get('naver')
+  @UseGuards(NaverSignupGuard)
+  naver() {}
+
+  @Get('naver/signup')
+  @UseGuards(NaverSignupGuard)
+  naverSignup() {}
+
+  @Get('naver/login')
+  @UseGuards(NaverLoginGuard)
+  naverLogin() {}
+
+  @Get('naver/callback')
+  @UseGuards(NaverCallbackGuard)
+  async naverCallback(@Req() req, @Res() res: Response) {
     try {
       const result = await this.authService.socialLogin(req.user, this.getOauthMode(req));
       return this.redirectWithToken(res, result.accessToken);

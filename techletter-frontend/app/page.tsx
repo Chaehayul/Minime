@@ -23,6 +23,13 @@ interface User {
   nickname: string;
 }
 
+interface NaverNews {
+  title: string;
+  description: string;
+  link: string;
+  pubDate: string;
+}
+
 export default function HomePage() {
   const [newsList, setNewsList] = useState<News[]>([]);
   const [topNews, setTopNews] = useState<News[]>([]);
@@ -32,6 +39,9 @@ export default function HomePage() {
   const [newsLoading, setNewsLoading] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [user, setUser] = useState<User | null>(null);
+  const [naverNews, setNaverNews] = useState<NaverNews[]>([]);
+  const [naverLoading, setNaverLoading] = useState(true);
+  const [naverError, setNaverError] = useState('');
 
   useEffect(() => {
     const token = localStorage.getItem('accessToken');
@@ -57,6 +67,31 @@ export default function HomePage() {
       }
     };
     fetchInitial();
+  }, []);
+
+  useEffect(() => {
+    const fetchNaverNews = async () => {
+      setNaverLoading(true);
+      setNaverError('');
+
+      try {
+        const res = await api.get('/news/naver/search', {
+          params: {
+            query: 'AI',
+            display: 5,
+            sort: 'date',
+          },
+        });
+        setNaverNews(res.data.items || []);
+      } catch (err: any) {
+        setNaverNews([]);
+        setNaverError(err.response?.data?.message || '네이버 뉴스를 불러오지 못했습니다.');
+      } finally {
+        setNaverLoading(false);
+      }
+    };
+
+    fetchNaverNews();
   }, []);
 
   useEffect(() => {
