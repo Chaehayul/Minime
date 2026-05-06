@@ -1,0 +1,66 @@
+/* globals.css */
+@import "tailwindcss";
+
+/* 시스템 설정 무시하고 오직 .dark 클래스가 있을 때만 다크모드 적용 */
+@variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  body {
+    @apply bg-white text-gray-900 transition-colors duration-200;
+  }
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  font-family: Arial, Helvetica, sans-serif;
+  /* 부드러운 화면 전환 효과 */
+  transition: background-color 0.2s ease-in-out, color 0.2s ease-in-out;
+}
+
+body {
+  min-height: 100vh;
+  /* 기본은 라이트모드 배경, .dark 클래스가 상위에 있을 때만 다크모드 배경 적용 */
+  @apply bg-white text-gray-900 dark:bg-[#0b0b0b] dark:text-white;
+}
+
+/* 🚀 커스텀 클래스: 라이트모드와 다크모드 설정을 한 곳에 모음 */
+
+.card-dark {
+  /* 라이트모드: 하얀 배경 + 연한 회색 테두리 */
+  @apply bg-white border border-gray-200 rounded-[18px] text-gray-900;
+  /* 다크모드: 어두운 배경 + 진한 회색 테두리 */
+  @apply dark:bg-[#171717] dark:border-[#2f2f2f] dark:text-white;
+}
+
+.input-dark {
+  /* 라이트모드 */
+  @apply bg-gray-50 border border-gray-200 text-gray-900 rounded-[14px];
+  /* 다크모드 */
+  @apply dark:bg-[#151515] dark:border-[#353535] dark:text-white;
+}
+
+.dashed-box {
+  /* 라이트모드 */
+  @apply bg-gray-50 border border-dashed border-gray-300 rounded-[18px];
+  /* 다크모드 */
+  @apply dark:bg-[#121212] dark:border-[#4b4b4b];
+}
+
+.blue-btn {
+  @apply bg-[#2f6df6] text-white rounded-[14px] hover:bg-[#1e56d6] transition-colors;
+}
+
+/* 레이아웃 여백 */
+.page-section {
+  padding-top: 24px;
+  padding-bottom: 96px;
+}
+
+@media (min-width: 1024px) {
+  .page-section {
+    padding-top: 32px;
+    padding-bottom: 40px;
+  }
+}
