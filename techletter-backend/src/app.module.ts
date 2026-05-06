@@ -13,7 +13,6 @@ import { InteractionsModule } from './interactions/interactions.module';
 import { SubscriptionsModule } from './subscriptions/subscriptions.module';
 import { StatsModule } from './stats/stats.module';
 import { UploadModule } from './upload/upload.module';
-import { ChatbotModule } from './chatbot/chatbot.module';
 
 @Module({
   imports: [
@@ -46,7 +45,6 @@ import { ChatbotModule } from './chatbot/chatbot.module';
     SubscriptionsModule,
     StatsModule,
     UploadModule,
-    ChatbotModule,
   ],
   controllers: [AppController],
   providers: [AppService],
