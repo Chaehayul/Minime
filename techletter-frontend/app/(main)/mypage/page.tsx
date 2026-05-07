@@ -552,32 +552,30 @@ export default function MyPage() {
         </section>
 
         {/* 구독 설정 */}
-        <div className="pb-6 border-b border-gray-800">
+        <div className="pb-6 border-b border-gray-100 dark:border-[#2E2E2E]">
           <div className="flex items-center gap-2 mb-4">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-            <span className="font-bold text-sm">구독 설정</span>
+            <span className="font-bold text-sm text-gray-900 dark:text-white">구독 설정</span>
           </div>
           {subscription ? (
             <div className="flex flex-col gap-3">
               <div className="flex justify-between items-center">
                 <div>
-                  <div className="text-sm text-gray-200">데일리 뉴스레터</div>
+                  <div className="text-sm text-gray-900 dark:text-gray-200">데일리 뉴스레터</div>
                   <div className="text-xs text-gray-500">매일 오전 수신 중</div>
                 </div>
-                <div className={`w-11 h-6 rounded-full flex items-center px-0.5 transition ${subscription.dailyActive ? 'bg-blue-600 justify-end' : 'bg-gray-700 justify-start'}`}>
-                  <div className="w-5 h-5 rounded-full bg-white" />
-                </div>
+                {/* 👇 가짜 스위치를 진짜 Toggle 컴포넌트로 교체! */}
+                <Toggle on={subscription.dailyActive ?? false} onToggle={() => handleToggleSubscription('dailyActive')} />
               </div>
               <div className="flex justify-between items-center">
                 <div>
-                  <div className="text-sm text-gray-200">주간 뉴스레터</div>
+                  <div className="text-sm text-gray-900 dark:text-gray-200">주간 뉴스레터</div>
                   <div className="text-xs text-gray-500">매주 월요일 수신 중</div>
                 </div>
-                <div className={`w-11 h-6 rounded-full flex items-center px-0.5 transition ${subscription.weeklyActive ? 'bg-blue-600 justify-end' : 'bg-gray-700 justify-start'}`}>
-                  <div className="w-5 h-5 rounded-full bg-white" />
-                </div>
+                {/* 👇 가짜 스위치를 진짜 Toggle 컴포넌트로 교체! */}
+                <Toggle on={subscription.weeklyActive ?? false} onToggle={() => handleToggleSubscription('weeklyActive')} />
               </div>
-              <button onClick={handleUnsubscribe} className="mt-2 text-sm text-red-400 hover:text-red-300 transition text-left">
+              <button onClick={handleUnsubscribe} className="mt-2 text-sm text-red-500 dark:text-red-400 hover:text-red-600 dark:hover:text-red-300 transition text-left">
                 구독 해지
               </button>
             </div>
@@ -585,7 +583,7 @@ export default function MyPage() {
             <div className="flex flex-col gap-3">
               <p className="text-sm text-gray-500">아직 구독하지 않았어요</p>
               <button onClick={handleSubscribe}
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white rounded-lg py-2.5 text-sm font-medium transition">
+                className="w-full bg-gray-900 dark:bg-white text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-200 rounded-xl py-2.5 text-sm font-medium transition">
                 뉴스레터 구독하기
               </button>
             </div>
@@ -593,27 +591,28 @@ export default function MyPage() {
         </div>
 
         {/* 설정 */}
-        <div className="flex flex-col">
-          <div className="flex justify-between items-center py-4 border-b border-gray-800">
+        <div className="flex flex-col pt-4">
+          {/* 👇 알림 설정을 <div>에서 <Link>로 변경하여 클릭 이동 가능하게! */}
+          <Link href="/mypage/notifications" className="flex justify-between items-center py-4 border-b border-gray-100 dark:border-[#2E2E2E] hover:bg-gray-50 dark:hover:bg-[#1E1E1E] transition -mx-2 px-2 rounded-xl cursor-pointer">
             <div className="flex items-center gap-3">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0"/></svg>
-              <span className="text-sm text-gray-200">알림 설정</span>
+              <span className="text-sm text-gray-900 dark:text-gray-200">알림 설정</span>
             </div>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="2.5"><polyline points="9 18 15 12 9 6"/></svg>
-          </div>
-          <div className="flex justify-between items-center py-4 border-b border-gray-800">
+          </Link>
+          
+          <div className="flex justify-between items-center py-4 border-b border-gray-100 dark:border-[#2E2E2E] -mx-2 px-2 rounded-xl">
             <div className="flex items-center gap-3">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/></svg>
-              <span className="text-sm text-gray-200">다크모드</span>
+              <span className="text-sm text-gray-900 dark:text-gray-200">다크모드</span>
             </div>
-            <button onClick={toggleDarkMode}
-              className={`w-11 h-6 rounded-full flex items-center px-0.5 transition ${isDark ? 'bg-blue-600 justify-end' : 'bg-gray-700 justify-start'}`}>
-              <div className="w-5 h-5 rounded-full bg-white" />
-            </button>
+            {/* 👇 다크모드 버튼도 진짜 Toggle 컴포넌트로 교체! */}
+            <Toggle on={isDark} onToggle={toggleDarkMode} />
           </div>
-          <button onClick={handleLogout} className="flex items-center gap-3 py-4">
+
+          <button onClick={handleLogout} className="flex items-center gap-3 py-4 -mx-2 px-2 hover:bg-red-50 dark:hover:bg-red-900/10 transition rounded-xl">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-            <span className="text-sm text-red-400">로그아웃</span>
+            <span className="text-sm text-red-500 dark:text-red-400 font-medium">로그아웃</span>
           </button>
         </div>
 
