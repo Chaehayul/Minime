@@ -26,6 +26,8 @@ interface Subscription {
   nextPaymentDate: string | null;
   paymentMethodLast4: string | null;
   paymentMethodBrand: string | null;
+  dailyActive?: boolean;
+  weeklyActive?: boolean;
 }
 
 interface Bookmark {
@@ -262,6 +264,7 @@ export default function MyPage() {
   const [user, setUser] = useState<User | null>(null);
   const [subscription, setSubscription] = useState<Subscription | null>(null);
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
+  const [stats, setStats] = useState({ bookmarks: 0, likes: 0, comments: 0 });
   const [loading, setLoading] = useState(true);
 
   const [editMode, setEditMode] = useState(false);
@@ -297,6 +300,10 @@ export default function MyPage() {
     };
     fetchData();
   }, [router]);
+
+  const handleSubscribe = () => {
+    router.push('/subscriptions/plans');
+  };
 
   const handleLogout = () => {
     localStorage.removeItem('accessToken');
@@ -355,6 +362,8 @@ export default function MyPage() {
   };
 
   const isDark = mounted && theme === 'dark';
+
+  const toggleDarkMode = () => setTheme(isDark ? 'light' : 'dark');
 
   if (loading || !mounted) {
     return (
@@ -441,22 +450,7 @@ export default function MyPage() {
                   </div>
                 </div>
               </div>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="2.5"><polyline points="9 18 15 12 9 6"/></svg>
-            </Link>
-            <Link href="/admin/news" className="flex justify-between items-center py-3 border-b border-gray-800">
-              <div className="flex items-center gap-3">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2"><path d="M4 6h16M4 10h16M4 14h16M4 18h16"/></svg>
-                <span className="text-sm text-gray-200">뉴스 관리</span>
-              </div>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="2.5"><polyline points="9 18 15 12 9 6"/></svg>
-            </Link>
-            <Link href="/admin/stats" className="flex justify-between items-center py-3">
-              <div className="flex items-center gap-3">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
-                <span className="text-sm text-gray-200">통계 대시보드</span>
-              </div>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="2.5"><polyline points="9 18 15 12 9 6"/></svg>
-            </Link>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-2 px-5 pb-5">
@@ -613,7 +607,7 @@ export default function MyPage() {
               <span className="text-sm text-gray-200">다크모드</span>
             </div>
             <button onClick={toggleDarkMode}
-              className={`w-11 h-6 rounded-full flex items-center px-0.5 transition ${darkMode ? 'bg-blue-600 justify-end' : 'bg-gray-700 justify-start'}`}>
+              className={`w-11 h-6 rounded-full flex items-center px-0.5 transition ${isDark ? 'bg-blue-600 justify-end' : 'bg-gray-700 justify-start'}`}>
               <div className="w-5 h-5 rounded-full bg-white" />
             </button>
           </div>
@@ -621,7 +615,7 @@ export default function MyPage() {
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
             <span className="text-sm text-red-400">로그아웃</span>
           </button>
-        </section>
+        </div>
 
       </main>
     </div>
