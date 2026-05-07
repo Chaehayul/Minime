@@ -7,6 +7,7 @@ import { AppService } from './app.service';
 import { UsersModule } from './users/users.module';
 import { AuthModule } from './auth/auth.module';
 import { NewsModule } from './news/news.module';
+import { ChatbotModule } from './chatbot/chatbot.module';
 import { CategoriesModule } from './categories/categories.module';
 import { TagsModule } from './tags/tags.module';
 import { InteractionsModule } from './interactions/interactions.module';
@@ -41,6 +42,7 @@ import { UploadModule } from './upload/upload.module';
     NewsModule,
     CategoriesModule,
     TagsModule,
+    ChatbotModule,
     InteractionsModule,
     SubscriptionsModule,
     StatsModule,

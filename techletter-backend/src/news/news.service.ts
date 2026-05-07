@@ -33,6 +33,7 @@ export class NewsService {
     private newsRepository: Repository<News>,
     @InjectRepository(Tag)
     private tagRepository: Repository<Tag>,
+    private readonly configService: ConfigService, // ✅ 이 부분이 추가되었습니다!
   ) {
     // ✅ 클래스 생성 시점에 OpenAI 초기화
     this.openai = new OpenAI({

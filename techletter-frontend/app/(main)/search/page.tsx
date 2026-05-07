@@ -1,85 +1,69 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
-import type { ReactNode } from 'react';
+import { useState, ReactNode } from 'react';
 import Link from 'next/link';
 import api, { getImageUrl } from '@/lib/api';
 
+// News 타입 정의 (필요에 따라 확장 가능)
 interface News {
   id: number;
   title: string;
   content: string;
-  thumbnailUrl?: string;
+  thumbnailUrl: string | null;
   viewCount: number;
-  category?: {
-    id: number;
-    name: string;
-  };
-  author?: {
-    nickname: string;
-  };
+  category?: { name: string };
 }
 
 export default function SearchPage() {
   const [query, setQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
   const [newsList, setNewsList] = useState<News[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    const fetchNews = async () => {
-      try {
-        const res = await api.get('/news');
-        setNewsList(res.data.news || []);
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setLoading(false);
-      }
-    };
+  const handleSearch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!query.trim()) return;
 
-    fetchNews();
-  }, []);
-
-  const filteredNews = useMemo(() => {
-    const keyword = query.trim().toLowerCase();
-    if (!keyword) return [];
-
-    return newsList.filter((news) => {
-      const target = [news.title, news.content, news.author?.nickname, news.category?.name]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase();
-
-      return target.includes(keyword);
-    });
-  }, [newsList, query]);
+    setSearchQuery(query);
+    setLoading(true);
+    try {
+      // 백엔드 뉴스 검색 API 호출
+      const res = await api.get('/news', { params: { search: query } });
+      // 백엔드 응답 구조에 맞춰 배열 세팅 (res.data.news 또는 res.data)
+      setNewsList(res.data.news || res.data || []);
+    } catch (err) {
+      console.error('검색 오류:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white">
-      <header className="sticky top-0 z-50 border-b border-gray-800 bg-gray-950">
-        <div className="mx-auto flex h-14 max-w-5xl items-center gap-3 px-4">
-          <Link href="/" className="text-sm text-gray-400 hover:text-white">
-            뒤로
-          </Link>
-          <div className="flex-1 rounded-full bg-gray-800 px-4 py-2">
+    // 전체 배경 다크모드 대응
+    <div className="min-h-screen bg-gray-50 dark:bg-[#121212] transition-colors">
+      {/* ── 검색바 헤더 ── */}
+      <header className="sticky top-0 z-50 bg-white/80 dark:bg-[#121212]/80 backdrop-blur-md border-b border-gray-100 dark:border-[#2E2E2E]">
+        <div className="max-w-xl mx-auto px-4 h-14 flex items-center justify-center">
+          <form onSubmit={handleSearch} className="w-full relative">
             <input
+              type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              autoFocus
-              placeholder="검색어를 입력하세요"
-              className="w-full bg-transparent text-sm text-white outline-none placeholder:text-gray-500"
+              placeholder="Mini + Me에서 궁금한 뉴스를 검색해보세요"
+              className="w-full bg-gray-100 dark:bg-[#1E1E1E] border border-transparent dark:border-[#3A3A3A]
+                         text-gray-900 dark:text-white text-sm rounded-xl pl-10 pr-4 py-2.5
+                         focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
             />
-          </div>
+            <svg className="absolute left-3.5 top-3 w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+          </form>
         </div>
       </header>
 
-      <main className="mx-auto max-w-5xl px-4 py-6 pb-24">
-        <div className="mb-4 flex items-center justify-between">
-          <h1 className="text-lg font-bold">검색</h1>
-          <span className="text-xs text-gray-500">{filteredNews.length}개</span>
-        </div>
-
-        <LocalResults loading={loading} newsList={filteredNews} hasQuery={Boolean(query.trim())} />
+      {/* ── 검색 결과 영역 ── */}
+      <main className="max-w-xl mx-auto px-4 py-6 pb-32">
+        <LocalResults loading={loading} newsList={newsList} hasQuery={!!searchQuery} />
       </main>
     </div>
   );
@@ -97,7 +81,11 @@ function LocalResults({
   if (loading) return <LoadingList />;
 
   if (!hasQuery) {
-    return <EmptyState>TechLetter에 등록된 기사 제목, 본문, 카테고리를 검색할 수 있습니다.</EmptyState>;
+    return (
+      <EmptyState>
+        Mini + Me에 등록된 기사 제목, 본문, 카테고리를 검색할 수 있습니다.
+      </EmptyState>
+    );
   }
 
   if (newsList.length === 0) {
@@ -108,24 +96,26 @@ function LocalResults({
     <div className="flex flex-col">
       {newsList.map((news) => (
         <Link key={news.id} href={`/news/${news.id}`}>
-          <article className="flex gap-3 rounded-lg border-b border-gray-800 px-2 py-4 transition hover:bg-gray-900">
-            {news.thumbnailUrl ? (
+          <article className="flex gap-3 rounded-2xl border-b border-gray-100 dark:border-[#2E2E2E] bg-white dark:bg-[#1E1E1E] px-3 py-4 mb-3 transition hover:bg-gray-50 dark:hover:bg-[#2A2A2A]">
+            {getImageUrl(news.thumbnailUrl) ? (
               <img
                 src={getImageUrl(news.thumbnailUrl)}
                 alt={news.title}
                 className="h-16 w-20 flex-shrink-0 rounded-lg object-cover"
               />
             ) : (
-              <div className="flex h-16 w-20 flex-shrink-0 items-center justify-center rounded-lg bg-gray-700 text-xs text-gray-500">
+              <div className="flex h-16 w-20 flex-shrink-0 items-center justify-center rounded-lg bg-gray-100 dark:bg-[#2A2A2A] text-xs text-gray-400 dark:text-gray-500">
                 이미지 없음
               </div>
             )}
             <div className="min-w-0 flex-1">
-              <p className="mb-1 line-clamp-2 text-sm font-medium text-gray-100">{news.title}</p>
-              <p className="line-clamp-1 text-xs text-gray-500">
-                {(news.content || '').replace(/<[^>]*>/g, '')}
+              <p className="mb-1 line-clamp-2 text-sm font-semibold text-gray-900 dark:text-gray-100">
+                {news.title}
               </p>
-              <div className="mt-2 flex items-center gap-3 text-xs text-gray-500">
+              <p className="line-clamp-1 text-xs text-gray-500 dark:text-gray-400">
+                {news.content.replace(/<[^>]*>/g, '')}
+              </p>
+              <div className="mt-2 flex items-center gap-3 text-[11px] text-gray-400 dark:text-gray-500">
                 <span>{news.category?.name || '뉴스'}</span>
                 <span>조회 {news.viewCount}</span>
               </div>
@@ -141,7 +131,7 @@ function LoadingList() {
   return (
     <div className="flex flex-col gap-3">
       {[1, 2, 3].map((item) => (
-        <div key={item} className="h-24 animate-pulse rounded-xl bg-gray-800" />
+        <div key={item} className="h-24 animate-pulse rounded-2xl bg-gray-100 dark:bg-[#1E1E1E]" />
       ))}
     </div>
   );
@@ -149,7 +139,7 @@ function LoadingList() {
 
 function EmptyState({ children }: { children: ReactNode }) {
   return (
-    <div className="rounded-xl border border-gray-800 bg-gray-900 px-4 py-8 text-center text-sm text-gray-400">
+    <div className="rounded-2xl border border-gray-100 dark:border-[#2E2E2E] bg-white dark:bg-[#1E1E1E] px-4 py-12 text-center text-sm text-gray-500 dark:text-gray-400">
       {children}
     </div>
   );
