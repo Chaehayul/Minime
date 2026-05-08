@@ -19,7 +19,7 @@ export default function Chatbot() {
   const [messages, setMessages] = useState<Message[]>([
     {
       role: 'bot',
-      text: '안녕하세요! 테크레터 AI 비서입니다.\n궁금한 IT 뉴스나 트렌드를 물어보세요 🚀',
+      text: '안녕하세요! MINIME AI 비서입니다.\n궁금한 IT 뉴스나 트렌드를 물어보세요 🚀',
       time: getNow(),
     },
   ]);
@@ -42,21 +42,43 @@ export default function Chatbot() {
     setMessages((prev) => [...prev, { role: 'user', text: userMessage, time: getNow() }]);
     setInput('');
     setIsLoading(true);
+    
     try {
+      // 1. 브라우저 저장소에서 로그인할 때 받아둔 토큰(신분증)을 꺼냅니다.
+      // (진현 님 프로젝트에서 토큰 저장 이름이 다를 수 있으니 확인해 보세요! 보통 accessToken이나 token을 씁니다)
+      const token = localStorage.getItem('accessToken') || localStorage.getItem('token');
+
+      // 2. 백엔드(문지기)에게 보낼 때 headers에 토큰을 같이 보냅니다.
       const res = await fetch('http://localhost:3000/chatbot/ask', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          // 토큰이 있으면 'Authorization' 헤더에 쏙 넣어줍니다!
+          ...(token ? { Authorization: `Bearer ${token}` } : {}) 
+        },
         body: JSON.stringify({ message: userMessage }),
       });
+
+      // 만약 토큰이 없거나 만료되어서 401 에러가 났다면?
+      if (res.status === 401) {
+        throw new Error('로그인이 필요하거나 권한이 없습니다.');
+      }
+
       const data = await res.json();
       setMessages((prev) => [
         ...prev,
         { role: 'bot', text: data.answer ?? data.reply ?? '응답을 받지 못했어요.', time: getNow() },
       ]);
-    } catch {
+    } catch (error: any) {
       setMessages((prev) => [
         ...prev,
-        { role: 'bot', text: '서버와 연결할 수 없어요. 잠시 후 다시 시도해 주세요 😢', time: getNow() },
+        { 
+          role: 'bot', 
+          text: error.message === '로그인이 필요하거나 권한이 없습니다.' 
+            ? '로그인 후 이용해 주세요! 🔐' 
+            : '서버와 연결할 수 없어요. 잠시 후 다시 시도해 주세요 😢', 
+          time: getNow() 
+        },
       ]);
     } finally {
       setIsLoading(false);

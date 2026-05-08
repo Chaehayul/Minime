@@ -3,7 +3,7 @@
 ## 📋 프로젝트 개요
 
 **MiniProject**는 NestJS 백엔드와 Next.js 프론트엔드로 구성된 풀스택 뉴스레터 플랫폼입니다.
-- **Backend**: NestJS + TypeScript + TypeORM + PostgreSQL
+- **Backend**: NestJS + TypeScript
 - **Frontend**: Next.js + React + TypeScript + Tailwind CSS
 
 ---
@@ -12,192 +12,168 @@
 
 ```
 MiniProject/
-├── package.json                (루트 패키지 파일)
-├── README.md                   (프로젝트 설명)
-├── structure.md               (이 파일 - 구조 문서)
-│
-├── techletter-backend/        (🔧 NestJS 백엔드)
+├── package.json
+├── README.md
+├── structure.md
+├── techletter-backend/
 │   ├── package.json
 │   ├── tsconfig.json
 │   ├── tsconfig.build.json
 │   ├── nest-cli.json
 │   ├── eslint.config.mjs
+│   ├── README.md
 │   ├── src/
-│   │   ├── main.ts            (애플리케이션 진입점)
-│   │   ├── app.module.ts      (루트 모듈)
+│   │   ├── main.ts
+│   │   ├── app.module.ts
 │   │   ├── app.controller.ts
 │   │   ├── app.service.ts
-│   │   │
-│   │   ├── auth/              (🔐 인증 모듈)
-│   │   ├── users/             (👥 사용자 모듈)
-│   │   ├── news/              (📰 뉴스 모듈)
-│   │   ├── categories/        (📂 카테고리 모듈)
-│   │   ├── tags/              (🏷️ 태그 모듈)
-│   │   ├── interactions/      (💬 상호작용 모듈)
+│   │   ├── auth/
+│   │   ├── categories/
+│   │   ├── chatbot/
+│   │   ├── database/
+│   │   ├── interactions/
 │   │   │   ├── bookmarks.controller.ts
 │   │   │   ├── comments.controller.ts
 │   │   │   ├── likes.controller.ts
+│   │   │   ├── interactions.module.ts
 │   │   │   └── entities/
-│   │   ├── subscriptions/     (📧 구독 모듈)
-│   │   ├── stats/             (📊 통계 모듈)
-│   │   ├── chatbot/           (🤖 챗봇 모듈)
-│   │   ├── upload/            (📤 파일 업로드 모듈)
-│   │   ├── types/             (타입 정의)
-│   │   ├── database/          (🗄️ DB 마이그레이션)
-│   │   └── config/            (⚙️ 설정 파일)
-│   │
-│   ├── test/                  (📝 테스트)
+│   │   ├── news/
+│   │   ├── stats/
+│   │   ├── subscriptions/
+│   │   ├── tags/
+│   │   ├── types/
+│   │   ├── upload/
+│   │   └── users/
+│   ├── test/
 │   │   ├── app.e2e-spec.ts
 │   │   └── jest-e2e.json
-│   ├── uploads/               (📁 업로드된 파일 저장소)
-│   └── README.md
-│
-└── techletter-frontend/       (🎨 Next.js 프론트엔드)
+│   └── uploads/
+└── techletter-frontend/
     ├── package.json
     ├── tsconfig.json
     ├── next.config.ts
     ├── eslint.config.mjs
     ├── postcss.config.mjs
     ├── next-env.d.ts
-    │
-    ├── app/                   (📄 Next.js App Router)
-    │   ├── layout.tsx         (루트 레이아웃)
-    │   ├── page.tsx           (홈페이지)
-    │   ├── not-found.tsx      (404 페이지)
+    ├── README.md
+    ├── AGENTS.md
+    ├── CLAUDE.md
+    ├── app/
+    │   ├── layout.tsx
+    │   ├── page.tsx
+    │   ├── not-found.tsx
     │   ├── globals.css
-    │   ├── (admin)/           (관리자 라우트)
-    │   ├── (auth)/            (인증 라우트)
-    │   ├── (main)/            (메인 라우트)
-    │   └── api/               (API 라우트)
-    │
-    ├── components/            (♻️ 재사용 컴포넌트)
+    │   ├── (admin)/
+    │   ├── (auth)/
+    │   ├── (main)/
+    │   └── api/
+    ├── components/
     │   ├── ThemeProvider.tsx
-    │   ├── admin/             (관리자 컴포넌트)
-    │   ├── common/            (공통 컴포넌트)
-    │   ├── editor/            (에디터 컴포넌트)
-    │   ├── interaction/       (상호작용 컴포넌트)
-    │   ├── layout/            (레이아웃 컴포넌트)
-    │   └── news/              (뉴스 컴포넌트)
-    │
-    ├── hooks/                 (🎣 커스텀 훅)
+    │   ├── admin/
+    │   ├── common/
+    │   ├── editor/
+    │   ├── interaction/
+    │   ├── layout/
+    │   └── news/
+    ├── hooks/
     │   ├── useAuth.ts
     │   ├── useBookmark.ts
     │   ├── useDarkMode.ts
     │   ├── useLike.ts
     │   └── usePushNotification.ts
-    │
-    ├── lib/                   (🛠️ 유틸리티)
-    │   ├── api.ts             (API 클라이언트)
-    │   ├── auth.ts            (인증 관련)
-    │   └── utils.ts           (일반 유틸리티)
-    │
-    ├── store/                 (🗂️ 상태 관리)
-    │   ├── authStore.ts       (인증 상태)
-    │   └── uiStore.ts         (UI 상태)
-    │
-    ├── types/                 (📝 타입 정의)
+    ├── lib/
+    │   ├── api.ts
+    │   ├── auth.ts
+    │   └── utils.ts
+    ├── store/
+    │   ├── authStore.ts
+    │   └── uiStore.ts
+    ├── styles/
+    │   └── theme.css
+    ├── types/
     │   ├── api.ts
     │   ├── news.ts
     │   └── user.ts
-    │
-    ├── styles/                (🎨 스타일)
-    │   └── theme.css
-    │
-    ├── public/                (📦 정적 파일)
-    ├── AGENTS.md
-    ├── CLAUDE.md
-    └── README.md
+    └── public/
 ```
 
 ---
 
 ## 🔧 Backend (techletter-backend)
 
-### 핵심 모듈
+### 주요 구성
 
-| 모듈 | 설명 |
-|------|------|
-| **auth** | JWT, Google OAuth, Kakao OAuth 인증 처리 |
-| **users** | 사용자 정보 관리 |
-| **news** | 뉴스 CRUD, 스케줄러 |
-| **categories** | 뉴스 카테고리 관리 |
-| **tags** | 태그 관리 및 연결 |
-| **interactions** | 좋아요, 북마크, 댓글 기능 |
-| **subscriptions** | 뉴스레터 구독 관리 |
-| **stats** | 관리자 통계 API |
-| **chatbot** | 챗봇 기능 (테스트 포함) |
-| **upload** | 파일 업로드 처리 |
-
-### 주요 파일
-- `src/main.ts` - 애플리케이션 시작점
-- `src/app.module.ts` - 모듈 통합
-- `nest-cli.json` - NestJS CLI 설정
-- `tsconfig.json` - TypeScript 설정
+- **`src/main.ts`**: NestJS 애플리케이션 진입점
+- **`src/app.module.ts`**: 루트 모듈, 하위 모듈 등록
+- **`auth/`**: 인증 관련 (JWT, OAuth 등)
+- **`users/`**: 사용자 관리
+- **`news/`**: 뉴스 CRUD 및 스케줄링
+- **`categories/`**: 카테고리 관리
+- **`tags/`**: 태그 관리
+- **`interactions/`**: 북마크, 좋아요, 댓글
+- **`subscriptions/`**: 구독 정보 및 결제
+- **`stats/`**: 관리자 통계
+- **`chatbot/`**: 챗봇 서비스
+- **`upload/`**: 파일 업로드
+- **`database/`**: 마이그레이션 및 DB 관련
 
 ### 실행 스크립트
+
 ```bash
-npm run start:dev      # 개발 모드
-npm run build         # 프로덕션 빌드
-npm run test          # 단위 테스트
-npm run test:e2e      # E2E 테스트
+npm run start:dev
+npm run build
+npm run test
+npm run test:e2e
 ```
 
 ---
 
 ## 🎨 Frontend (techletter-frontend)
 
-### 라우트 구조
-- `(admin)` - 관리자 페이지
-- `(auth)` - 로그인/회원가입 페이지
-- `(main)` - 메인 뉴스레터 페이지
-- `api/` - API 라우트
+### 주요 구성
 
-### 주요 폴더
-
-| 폴더 | 설명 |
-|------|------|
-| **components** | 재사용 가능한 UI 컴포넌트 |
-| **hooks** | 인증, 북마크, 테마, 알림 등 커스텀 훅 |
-| **lib** | API 클라이언트, 인증 로직, 유틸리티 |
-| **store** | Zustand 상태 관리 (인증, UI) |
-| **types** | TypeScript 타입 정의 |
-| **styles** | 테마 및 전역 스타일 |
-| **public** | 정적 자산 (이미지, 폰트 등) |
+- **`app/`**: Next.js App Router
+  - `layout.tsx`: 공통 레이아웃
+  - `page.tsx`: 메인 페이지
+  - `not-found.tsx`: 404 페이지
+  - `(admin)/`: 관리자 전용 페이지
+  - `(auth)/`: 인증 페이지
+  - `(main)/`: 사용자용 메인 페이지
+  - `api/`: 서버 API 엔드포인트
+- **`components/`**: 재사용 UI 컴포넌트
+- **`hooks/`**: 커스텀 훅
+- **`lib/`**: API 클라이언트 및 유틸리티
+- **`store/`**: 상태 관리
+- **`types/`**: 타입 정의
+- **`styles/`**: 전역 스타일 및 테마
+- **`public/`**: 정적 자산
 
 ### 실행 스크립트
+
 ```bash
-npm run dev          # 개발 서버 시작
-npm run build        # 프로덕션 빌드
-npm run start        # 빌드된 앱 시작
-npm run lint         # ESLint 실행
+npm run dev
+npm run build
+npm run start
+npm run lint
 ```
 
 ---
 
-## 🔄 데이터 흐름
+## 📊 기술 스택
 
-```
-User (Frontend)
-    ↓
-Next.js App (Components, Hooks, Store)
-    ↓
-API Client (lib/api.ts)
-    ↓
-NestJS Backend (Controllers, Services)
-    ↓
-TypeORM (Database)
-    ↓
-PostgreSQL
-```
+- **Frontend**: Next.js, React, TypeScript, Tailwind CSS
+- **Backend**: NestJS, TypeScript
+- **데이터베이스**: PostgreSQL (예상)
 
 ---
 
-## 📊 기술 스택 요약
+## 🔄 전체 흐름
 
-| 계층 | 기술 |
-|------|------|
-| **Frontend** | Next.js 14, React 18, TypeScript, Tailwind CSS, Zustand |
-| **Backend** | NestJS 10, TypeScript, TypeORM, PostgreSQL |
+1. 사용자 요청 → **Next.js frontend**
+2. API 호출 → **NestJS backend**
+3. 백엔드 비즈니스 로직 처리
+4. 데이터베이스 저장/조회
+5. 결과 반환 → **Frontend 렌더링**
 | **인증** | JWT, Google OAuth 2.0, Kakao OAuth |
 | **배포** | (설정 필요) |
 
