@@ -1,52 +1,64 @@
-import { Injectable } from '@nestjs/common';
+// src/chatbot/chatbot.service.ts
+
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { News } from '../news/news.entity';
 import OpenAI from 'openai';
- 
+
+interface ExternalTrend {
+  title: string;
+  description: string;
+  source: string;
+  publishedAt: string;
+}
+
 @Injectable()
 export class ChatbotService {
+  private readonly logger = new Logger(ChatbotService.name);
   private openai: OpenAI;
- 
+
+  private trendCache: { data: ExternalTrend[]; cachedAt: number } | null = null;
+  private readonly CACHE_TTL_MS = 5 * 60 * 1000;
+
   constructor(
     @InjectRepository(News)
     private newsRepository: Repository<News>,
     private dataSource: DataSource,
   ) {
-    this.openai = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
-    });
+    this.openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
   }
- 
+
   // ─────────────────────────────────────────────
   // Public: 챗봇 답변 생성
   // userId가 있으면 개인화, 없으면 일반 브리핑
   // ─────────────────────────────────────────────
   async getAnswer(userMessage: string, userId?: string): Promise<string> {
     try {
-      // 1. 최신 뉴스 (공통)
-      const recentNews = await this.newsRepository.find({
-        order: { createdAt: 'DESC' },
-        take: 8,
-        relations: ['category', 'tags'],
-      });
- 
-      const newsContext = recentNews.length > 0
-        ? recentNews
-            .map((news) =>
-              `[${news.category?.name ?? '기타'}] ${news.title}\n요약: ${news.aiSummary ?? '요약 없음'}\n태그: ${news.tags?.map((t) => `#${t.name}`).join(' ') ?? '없음'}`,
-            )
-            .join('\n\n')
-        : '현재 등록된 뉴스가 없습니다.';
- 
-      // 2. 사용자 개인화 컨텍스트 (로그인 시)
-      const personalContext = userId
-        ? await this.buildPersonalContext(userId)
-        : null;
- 
+      // 1. 자체 뉴스 + 외부 트렌드 병렬 수집
+      const [ownNewsContext, externalTrends] = await Promise.all([
+        this.getOwnNews(),
+        this.getExternalTrends(),
+      ]);
+
+      // 2. 개인화 컨텍스트 (로그인 시) + 방어막
+      let personalContext: string | null = null;
+      if (userId) {
+        try {
+          personalContext = await this.buildPersonalContext(userId);
+        } catch (dbError) {
+          this.logger.warn('개인화 DB 조회 실패 — 일반 브리핑으로 대체');
+          personalContext = null;
+        }
+      }
+
       // 3. 프롬프트 조합 후 OpenAI 호출
-      const systemPrompt = this.buildSystemPrompt(newsContext, personalContext);
- 
+      const systemPrompt = this.buildSystemPrompt(
+        ownNewsContext,
+        externalTrends,
+        personalContext,
+      );
+
       const response = await this.openai.chat.completions.create({
         model: 'gpt-4o-mini',
         messages: [
@@ -55,117 +67,203 @@ export class ChatbotService {
         ],
         temperature: 0.4,
       });
- 
+
       return (
         response.choices[0].message.content ??
         '죄송해요, 대답을 생성하지 못했어요.'
       );
     } catch (error) {
-      console.error('챗봇 응답 에러:', error);
+      this.logger.error('챗봇 응답 에러:', error);
       return '서버와 연결이 불안정하여 답변을 드릴 수 없습니다 😢';
     }
   }
- 
-  // ─────────────────────────────────────────────
-  // Private: 사용자 개인화 데이터 수집
-  // recommendation 모듈의 user_category_scores +
-  // 최근 읽은 뉴스 + 북마크 활용
-  // ─────────────────────────────────────────────
- private async buildPersonalContext(userId: string): Promise<string> {
-    // 🚀 Promise.all을 사용하여 4개의 DB 쿼리를 동시에 쾅! 날립니다.
-    const [topCategories, recentlyRead, bookmarkedTags, monthlyStatsResult] = await Promise.all([
-      // 1. 관심 카테고리 TOP 3
-      this.dataSource.query(
-        `SELECT c.name, ucs.score, ucs.view_count, ucs.like_count, ucs.bookmark_count
-         FROM user_category_scores ucs
-         JOIN categories c ON c.id = ucs.category_id
-         WHERE ucs.user_id = ?
-         ORDER BY ucs.score DESC
-         LIMIT 3`,
-        [userId],
-      ),
-      // 2. 최근 읽은 뉴스 3개
-      this.dataSource.query(
-        `SELECT DISTINCT n.title, c.name AS category
-         FROM interactions i
-         JOIN news n ON n.id = i.news_id
-         JOIN categories c ON c.id = n.category_id
-         WHERE i.user_id = ? AND i.type = 'view'
-         ORDER BY i.created_at DESC
-         LIMIT 3`,
-        [userId],
-      ),
-      // 3. 북마크한 뉴스 태그
-      this.dataSource.query(
-        `SELECT DISTINCT t.name
-         FROM interactions i
-         JOIN news_tags nt ON nt.news_id = i.news_id
-         JOIN tags t ON t.id = nt.tag_id
-         WHERE i.user_id = ? AND i.type = 'bookmark'
-         ORDER BY i.created_at DESC
-         LIMIT 8`,
-        [userId],
-      ),
-      // 4. 이번 달 읽은 뉴스 수
-      this.dataSource.query(
-        `SELECT COUNT(DISTINCT news_id) AS read_count
-         FROM interactions
-         WHERE user_id = ? AND type = 'view'
-           AND created_at >= DATE_FORMAT(NOW(), '%Y-%m-01')`,
-        [userId],
-      )
-    ]);
 
-    const monthlyStats = monthlyStatsResult[0]; // 배열 구조 분해
- 
-    // ── 개인화 컨텍스트 문자열 조합 ──
+  // ─────────────────────────────────────────────
+  // 자체 DB 뉴스 수집
+  // ─────────────────────────────────────────────
+  private async getOwnNews(): Promise<string> {
+    const recentNews = await this.newsRepository.find({
+      // where: { status: 'published' },  <-- 이 줄 삭제!
+      order: { createdAt: 'DESC' },     // <-- publishedAt 대신 예전의 createdAt으로 복구!
+      take: 8,
+      relations: ['category', 'tags'],
+    });
+
+    if (!recentNews.length) return '현재 등록된 뉴스가 없습니다.';
+
+    return recentNews
+      .map((news) =>
+        `[${news.category?.name ?? '기타'}] ${news.title}\n` +
+        `요약: ${news.aiSummary ?? '요약 없음'}\n` +
+        `태그: ${news.tags?.map((t) => `#${t.name}`).join(' ') ?? '없음'}`,
+      )
+      .join('\n\n');
+  }
+
+  // ─────────────────────────────────────────────
+  // NewsAPI 실시간 트렌드 (5분 캐시)
+  // ─────────────────────────────────────────────
+  private async getExternalTrends(): Promise<ExternalTrend[]> {
+    if (
+      this.trendCache &&
+      Date.now() - this.trendCache.cachedAt < this.CACHE_TTL_MS
+    ) {
+      return this.trendCache.data;
+    }
+
+    const apiKey = process.env.NEWS_API_KEY;
+    if (!apiKey) return [];
+
+    try {
+      const fetchTrends = async (lang: string) => {
+        const url = new URL('https://newsapi.org/v2/top-headlines');
+        url.searchParams.set('category', 'technology');
+        url.searchParams.set('language', lang);
+        url.searchParams.set('pageSize', '8');
+        url.searchParams.set('apiKey', apiKey);
+        const res = await fetch(url.toString());
+        return res.json();
+      };
+
+      let data = await fetchTrends('ko');
+      if (!data.articles?.length) data = await fetchTrends('en');
+
+      const trends: ExternalTrend[] = (data.articles ?? [])
+        .filter((a: any) => a.title && a.title !== '[Removed]')
+        .slice(0, 8)
+        .map((a: any) => ({
+          title: a.title,
+          description: a.description ?? '',
+          source: a.source.name,
+          publishedAt: a.publishedAt,
+        }));
+
+      this.trendCache = { data: trends, cachedAt: Date.now() };
+      return trends;
+    } catch (err) {
+      this.logger.warn('NewsAPI 호출 실패 — 자체 뉴스만 사용', err);
+      return [];
+    }
+  }
+
+  // ─────────────────────────────────────────────
+  // 사용자 개인화 데이터 수집
+  // ─────────────────────────────────────────────
+  private async buildPersonalContext(userId: string): Promise<string> {
+    const [topCategories, recentlyRead, bookmarkedTags, monthlyStatsResult] =
+      await Promise.all([
+        this.dataSource.query(
+          `SELECT c.name, ucs.score, ucs.view_count, ucs.like_count, ucs.bookmark_count
+           FROM user_category_scores ucs
+           JOIN categories c ON c.id = ucs.category_id
+           WHERE ucs.user_id = ?
+           ORDER BY ucs.score DESC
+           LIMIT 3`,
+          [userId],
+        ),
+        this.dataSource.query(
+          `SELECT DISTINCT n.title, c.name AS category
+           FROM interactions i
+           JOIN news n ON n.id = i.news_id
+           JOIN categories c ON c.id = n.category_id
+           WHERE i.user_id = ? AND i.type = 'view'
+           ORDER BY i.created_at DESC
+           LIMIT 3`,
+          [userId],
+        ),
+        this.dataSource.query(
+          `SELECT DISTINCT t.name
+           FROM interactions i
+           JOIN news_tags nt ON nt.news_id = i.news_id
+           JOIN tags t ON t.id = nt.tag_id
+           WHERE i.user_id = ? AND i.type = 'bookmark'
+           ORDER BY i.created_at DESC
+           LIMIT 8`,
+          [userId],
+        ),
+        this.dataSource.query(
+          `SELECT COUNT(DISTINCT news_id) AS read_count
+           FROM interactions
+           WHERE user_id = ? AND type = 'view'
+             AND created_at >= DATE_FORMAT(NOW(), '%Y-%m-01')`,
+          [userId],
+        ),
+      ]);
+
+    const monthlyStats = monthlyStatsResult[0];
     const lines: string[] = [];
- 
+
     if (topCategories.length > 0) {
-      const catList = topCategories
-        .map(
-          (c: any, i: number) =>
-            `  ${i + 1}위. ${c.name} (조회 ${c.view_count}회, 좋아요 ${c.like_count}회, 북마크 ${c.bookmark_count}회)`,
-        )
-        .join('\n');
-      lines.push(`[관심 카테고리 TOP ${topCategories.length}]\n${catList}`);
+      lines.push(
+        `[관심 카테고리 TOP ${topCategories.length}]\n` +
+          topCategories
+            .map(
+              (c: any, i: number) =>
+                `  ${i + 1}위. ${c.name} (조회 ${c.view_count}회, 좋아요 ${c.like_count}회, 북마크 ${c.bookmark_count}회)`,
+            )
+            .join('\n'),
+      );
     }
- 
+
     if (recentlyRead.length > 0) {
-      const readList = recentlyRead
-        .map((n: any) => `  - [${n.category}] ${n.title}`)
-        .join('\n');
-      lines.push(`[최근 읽은 뉴스]\n${readList}`);
+      lines.push(
+        `[최근 읽은 뉴스]\n` +
+          recentlyRead.map((n: any) => `  - [${n.category}] ${n.title}`).join('\n'),
+      );
     }
- 
+
     if (bookmarkedTags.length > 0) {
-      const tagList = bookmarkedTags.map((t: any) => `#${t.name}`).join(' ');
-      lines.push(`[북마크 기반 관심 키워드]\n  ${tagList}`);
+      lines.push(
+        `[북마크 기반 관심 키워드]\n  ` +
+          bookmarkedTags.map((t: any) => `#${t.name}`).join(' '),
+      );
     }
- 
+
     if (monthlyStats?.read_count) {
       lines.push(`[이번 달 읽은 뉴스]\n  총 ${monthlyStats.read_count}개`);
     }
- 
+
     return lines.length > 0 ? lines.join('\n\n') : '';
   }
- 
+
   // ─────────────────────────────────────────────
-  // Private: 시스템 프롬프트 생성
+  // 시스템 프롬프트 생성
   // ─────────────────────────────────────────────
   private buildSystemPrompt(
-    newsContext: string,
+    ownNewsContext: string,
+    externalTrends: ExternalTrend[],
     personalContext: string | null,
   ): string {
-    const isPersonalized = personalContext && personalContext.length > 0;
- 
+    const isPersonalized = !!personalContext?.length;
+
+    const trendBlock = externalTrends.length > 0
+      ? `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[지금 테크 업계 실시간 트렌드] ← 맥락 파악용
+${externalTrends
+  .map(
+    (t, i) =>
+      `${i + 1}. ${t.title}\n   출처: ${t.source} / ${new Date(t.publishedAt).toLocaleDateString('ko-KR')}`,
+  )
+  .join('\n')}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`
+      : '';
+
+    const trendRule = externalTrends.length > 0
+      ? `
+[외부 트렌드 활용 규칙]
+- [지금 테크 업계 실시간 트렌드]는 "지금 업계 분위기" 맥락으로만 써.
+- 언급 방식: "요즘 업계에서 [키워드] 얘기가 많이 나오고 있어요." → MINIME 자체 뉴스로 자연스럽게 연결.
+- 외부 트렌드 URL은 절대 노출 금지. 키워드와 분위기만 활용.
+- 자체 뉴스에 관련 기사 없으면: "아직 MINIME에서 다루지 않은 주제예요. 곧 다뤄질 예정이에요! 🙏"`
+      : '';
+
     const personalSection = isPersonalized
       ? `
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 [이 사용자의 개인 데이터]
 ${personalContext}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
- 
+
 [개인화 답변 규칙]
 - 위 개인 데이터를 반드시 활용해서 답변을 맞춤화해.
 - 사용자가 "뉴스 추천해 줘" 라고 하면 → 관심 카테고리 TOP 순서대로 관련 뉴스를 먼저 추천해.
@@ -178,32 +276,51 @@ ${personalContext}
 [일반 브리핑 규칙]
 - 로그인하지 않은 사용자에게는 전체 뉴스 중 가장 주목할 만한 것을 균형 있게 소개해.
 - 브리핑 말미에 "로그인하시면 관심 분야에 맞는 맞춤 추천을 받을 수 있어요! 😊" 를 자연스럽게 안내해.`;
- 
-    return `너는 IT 테크 뉴스 플랫폼 '테크레터'의 AI 뉴스 비서야.
+
+    return `너는 IT 테크 뉴스 플랫폼 'MINIME'의 AI 뉴스 비서야.
 ${isPersonalized ? '이 사용자의 읽기 패턴과 관심사 데이터가 있으니, 철저히 개인화된 답변을 제공해.' : ''}
- 
-[너의 역할]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[메시지 유형 분류 — 가장 먼저 판단해]
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. 가벼운 인삿말 (안녕, ㅎㅇ, 안녕하세요, 반가워, hi, hello, ㅎㅇㅎㅇ 등)
+   → 짧고 친근하게 답하고 끝내. 뉴스 브리핑·추천 자동 시작 금지.
+   답변 예시: "안녕하세요! 😊 오늘 어떤 IT 소식이 궁금하세요? 뉴스 추천이나 브리핑을 도와드릴게요!"
+
+2. IT·테크와 완전히 무관한 질문 (날씨, 맛집, 연애, 번역, 잡담 등)
+   → 아래 문구로만 가볍게 거절. 추가 설명 금지.
+   답변 예시: "저는 MINIME 뉴스 비서라서 IT 소식만 알려드릴 수 있어요! 다른 건 몰라요 😅"
+
+3. IT·테크·뉴스 관련 질문 또는 추천 요청
+   → 아래 [너의 역할]과 규칙에 따라 풀 리스폰스 제공.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[너의 역할] — 유형 3에만 적용
 - 뉴스 브리핑·요약·추천을 담당하는 친절한 AI 비서
 - 사용자가 오늘 어떤 뉴스를 읽어야 할지 빠르게 파악하도록 도와주는 역할
 - 딱딱하지 않고 친근하되, 정보는 정확하고 간결하게
- 
-[절대 규칙]
-1. 반드시 아래 [최근 뉴스 정보]를 기반으로만 답변해. 없는 뉴스를 지어내지 마.
-2. [최근 뉴스 정보]가 비어 있다면 → "아직 오늘 새로운 테크 기사가 없어요 😅 조금 뒤에 다시 확인해 주세요!"
-3. IT·테크와 무관한 질문(날씨, 맛집, 연애 등) → "저는 테크레터 뉴스 비서라서 IT 소식만 알려드릴 수 있어요! 다른 건 몰라요 😅"
-4. 답변은 이모지(🚀 💡 🔥 🤖 ☁️ 🔐 등)를 적절히 섞어 가독성 있게.
-5. 한 번에 너무 많은 뉴스를 나열하지 말고, 핵심 2~4개만 골라서 깊이 있게 소개해.
-6. 뉴스 제목을 그대로 읽지 말고, 핵심 내용을 쉽게 풀어서 설명해.
+
+[절대 규칙] — 유형 3에만 적용
+1. 반드시 아래 [MINIME 자체 뉴스]를 기반으로만 답변해. 없는 뉴스를 지어내지 마.
+2. [MINIME 자체 뉴스]가 비어 있다면 → "아직 오늘 새로운 테크 기사가 없어요 😅 조금 뒤에 다시 확인해 주세요!"
+3. 답변은 이모지(🚀 💡 🔥 🤖 ☁️ 🔐 등)를 적절히 섞어 가독성 있게.
+4. 한 번에 너무 많은 뉴스를 나열하지 말고, 핵심 2~4개만 골라서 깊이 있게 소개해.
+5. 뉴스 제목을 그대로 읽지 말고, 핵심 내용을 쉽게 풀어서 설명해.
+${trendRule}
 ${personalSection}
- 
-[답변 형식 가이드]
+
+[답변 형식 가이드] — 유형 3에만 적용
 - 뉴스 브리핑 요청 시: 카테고리 이모지 + 한 줄 핵심 요약 형태로
 - 특정 주제 질문 시: 관련 뉴스 먼저 → 간단한 배경 설명 → 한 줄 코멘트
 - 패턴/성향 질문 시: 데이터 기반 분석 → 따뜻한 코멘트
- 
+
+${trendBlock}
+
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-[최근 뉴스 정보]
-${newsContext}
+[MINIME 자체 뉴스]
+${ownNewsContext}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
   }
 }

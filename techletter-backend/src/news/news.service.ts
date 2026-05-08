@@ -1,4 +1,5 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadGatewayException, BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { News, NewsStatus } from './news.entity';
@@ -6,6 +7,22 @@ import { Tag } from '../tags/tag.entity';
 import { CreateNewsDto } from './dto/create-news.dto';
 import { UpdateNewsDto } from './dto/update-news.dto';
 import OpenAI from 'openai'; // ✅ OpenAI 임포트 추가
+
+interface NaverNewsItem {
+  title: string;
+  originallink: string;
+  link: string;
+  description: string;
+  pubDate: string;
+}
+
+interface NaverNewsResponse {
+  lastBuildDate: string;
+  total: number;
+  start: number;
+  display: number;
+  items: NaverNewsItem[];
+}
 
 @Injectable()
 export class NewsService {
@@ -16,6 +33,7 @@ export class NewsService {
     private newsRepository: Repository<News>,
     @InjectRepository(Tag)
     private tagRepository: Repository<Tag>,
+    private readonly configService: ConfigService, // ✅ 이 부분이 추가되었습니다!
   ) {
     // ✅ 클래스 생성 시점에 OpenAI 초기화
     this.openai = new OpenAI({
@@ -168,6 +186,62 @@ export class NewsService {
     await this.newsRepository.increment({ id }, 'viewCount', 1);
   }
 
+  async searchNaverNews(query: string, display = 10, start = 1, sort: 'sim' | 'date' = 'date') {
+    const keyword = query?.trim();
+    if (!keyword) {
+      throw new BadRequestException('검색어를 입력해주세요.');
+    }
+
+    const clientId =
+      this.configService.get<string>('NAVER_SEARCH_CLIENT_ID') ||
+      this.configService.get<string>('NAVER_CLIENT_ID');
+    const clientSecret =
+      this.configService.get<string>('NAVER_SEARCH_CLIENT_SECRET') ||
+      this.configService.get<string>('NAVER_CLIENT_SECRET');
+    if (!clientId || !clientSecret) {
+      throw new BadRequestException(
+        'NAVER_SEARCH_CLIENT_ID와 NAVER_SEARCH_CLIENT_SECRET을 설정해주세요.',
+      );
+    }
+
+    const params = new URLSearchParams({
+      query: keyword,
+      display: String(Math.min(Math.max(display, 1), 100)),
+      start: String(Math.min(Math.max(start, 1), 1000)),
+      sort,
+    });
+
+    let response: Response;
+    try {
+      response = await fetch(`https://openapi.naver.com/v1/search/news.json?${params}`, {
+        headers: {
+          'X-Naver-Client-Id': clientId,
+          'X-Naver-Client-Secret': clientSecret,
+        },
+      });
+    } catch {
+      throw new BadGatewayException('네이버 뉴스 검색 API에 연결하지 못했습니다.');
+    }
+
+    if (!response.ok) {
+      throw new BadGatewayException('네이버 뉴스 검색 API 호출에 실패했습니다. Client ID와 Secret을 확인해주세요.');
+    }
+
+    const data = (await response.json()) as NaverNewsResponse;
+    return {
+      total: data.total,
+      start: data.start,
+      display: data.display,
+      items: data.items.map((item) => ({
+        title: this.cleanNaverText(item.title),
+        description: this.cleanNaverText(item.description),
+        link: item.link,
+        originalLink: item.originallink,
+        pubDate: item.pubDate,
+      })),
+    };
+  }
+
   async publishScheduled() {
     const now = new Date();
     const scheduledNews = await this.newsRepository.find({
@@ -188,5 +262,15 @@ export class NewsService {
       .replace(/[^a-z0-9가-힣\s]/g, '')
       .replace(/\s+/g, '-')
       .substring(0, 100) + '-' + Date.now();
+  }
+
+  private cleanNaverText(value: string): string {
+    return value
+      .replace(/<[^>]+>/g, '')
+      .replace(/&quot;/g, '"')
+      .replace(/&apos;/g, "'")
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>');
   }
 }

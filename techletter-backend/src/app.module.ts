@@ -7,13 +7,13 @@ import { AppService } from './app.service';
 import { UsersModule } from './users/users.module';
 import { AuthModule } from './auth/auth.module';
 import { NewsModule } from './news/news.module';
+import { ChatbotModule } from './chatbot/chatbot.module';
 import { CategoriesModule } from './categories/categories.module';
 import { TagsModule } from './tags/tags.module';
 import { InteractionsModule } from './interactions/interactions.module';
 import { SubscriptionsModule } from './subscriptions/subscriptions.module';
 import { StatsModule } from './stats/stats.module';
 import { UploadModule } from './upload/upload.module';
-import { ChatbotModule } from './chatbot/chatbot.module';
 
 @Module({
   imports: [
@@ -42,11 +42,11 @@ import { ChatbotModule } from './chatbot/chatbot.module';
     NewsModule,
     CategoriesModule,
     TagsModule,
+    ChatbotModule,
     InteractionsModule,
     SubscriptionsModule,
     StatsModule,
     UploadModule,
-    ChatbotModule,
   ],
   controllers: [AppController],
   providers: [AppService],
