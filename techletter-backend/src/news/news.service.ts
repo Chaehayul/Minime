@@ -1,19 +1,169 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadGatewayException, BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { News, NewsStatus } from './news.entity';
 import { Tag } from '../tags/tag.entity';
 import { CreateNewsDto } from './dto/create-news.dto';
 import { UpdateNewsDto } from './dto/update-news.dto';
+import OpenAI from 'openai'; // ✅ OpenAI 임포트 추가
+
+interface NaverNewsItem {
+  title: string;
+  originallink: string;
+  link: string;
+  description: string;
+  pubDate: string;
+}
+
+interface NaverNewsResponse {
+  lastBuildDate: string;
+  total: number;
+  start: number;
+  display: number;
+  items: NaverNewsItem[];
+}
+
+export interface AnalyzeNewsDto {
+  title?: string;
+  content?: string;
+  tags?: string[];
+}
+
+export interface AiAnalyzeResult {
+  seoScore: number;
+  seoItems: { label: string; ok: boolean; suggestion: string }[];
+  keywords: string[];
+  titleSuggestions: string[];
+  metaSuggestion: string;
+  lead: string;
+  tags: string[];
+  keyPoints: string[];
+  newsletterSummary: string;
+  styleNote: string;
+  readabilityNote: string;
+}
 
 @Injectable()
 export class NewsService {
+  private openai: OpenAI; // ✅ OpenAI 인스턴스 변수 선언
+
   constructor(
     @InjectRepository(News)
     private newsRepository: Repository<News>,
     @InjectRepository(Tag)
     private tagRepository: Repository<Tag>,
-  ) {}
+    private readonly configService: ConfigService, // ✅ 이 부분이 추가되었습니다!
+  ) {
+    // ✅ 클래스 생성 시점에 OpenAI 초기화
+    this.openai = new OpenAI({
+      apiKey: this.configService.get<string>('OPENAI_API_KEY') || 'missing',
+    });
+  }
+
+  // ✅ AI 3줄 요약 프라이빗 메서드 추가
+  private async generateAiSummary(content: string): Promise<string> {
+    if (!content) return ''; // 본문이 없으면 빈 문자열 반환
+
+    try {
+      const response = await this.openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'system',
+            content: `너는 IT 전문 기자이자 요약의 달인이야. 주어진 뉴스 본문을 핵심만 뽑아 정확히 3줄로 요약해야 해. 
+            [규칙]
+            1. 반드시 각 줄은 "- " 기호로 시작할 것.
+            2. 일반인도 이해하기 쉬운 친절한 말투를 사용할 것.
+            3. 3줄을 초과하거나 미달하지 말 것.`,
+          },
+          {
+            role: 'user',
+            content: content,
+          },
+        ],
+        temperature: 0.3,
+      });
+
+      return response.choices[0].message.content || '요약을 생성할 수 없습니다.';
+    } catch (error) {
+      console.error('AI 요약 생성 중 에러 발생:', error);
+      return 'AI 요약 생성에 실패했습니다.';
+    }
+  }
+
+  async analyzeNews(dto: AnalyzeNewsDto): Promise<AiAnalyzeResult> {
+    if (!this.configService.get<string>('OPENAI_API_KEY')) {
+      throw new BadRequestException('OPENAI_API_KEY를 .env에 설정해주세요.');
+    }
+
+    const title = dto.title?.trim() || '(미입력)';
+    const contentText = (dto.content ?? '').replace(/<[^>]*>/g, '').slice(0, 2000) || '(미입력)';
+    const currentTags = dto.tags?.length ? dto.tags.join(', ') : '(없음)';
+
+    if (title === '(미입력)' && contentText === '(미입력)') {
+      throw new BadRequestException('제목 또는 본문을 입력해주세요.');
+    }
+
+    const response = await this.openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      temperature: 0.7,
+      response_format: { type: 'json_object' },
+      messages: [
+        {
+          role: 'system',
+          content: 'You are a Korean IT news editor. Return only valid JSON matching the requested schema.',
+        },
+        {
+          role: 'user',
+          content: `다음 뉴스 기사를 분석해서 JSON으로만 응답해주세요.
+
+제목: ${title}
+본문: ${contentText}
+현재 태그: ${currentTags}
+
+JSON 스키마:
+{
+  "seoScore": 75,
+  "seoItems": [
+    {"label": "제목이 검색 친화적입니다", "ok": true, "suggestion": ""},
+    {"label": "키워드가 본문에 적절히 분포되어 있습니다", "ok": true, "suggestion": ""},
+    {"label": "소제목 추가를 권장합니다", "ok": false, "suggestion": "H2 태그로 소제목을 2~3개 추가하면 가독성과 SEO가 향상됩니다"}
+  ],
+  "keywords": ["핵심키워드1", "핵심키워드2", "핵심키워드3"],
+  "titleSuggestions": ["추천제목1", "추천제목2", "추천제목3"],
+  "metaSuggestion": "SEO에 최적화된 메타 설명 50~160자",
+  "lead": "2문장 이내의 리드문",
+  "tags": ["태그1", "태그2", "태그3", "태그4", "태그5"],
+  "keyPoints": ["핵심포인트1", "핵심포인트2", "핵심포인트3"],
+  "newsletterSummary": "뉴스레터용 2~3문장 요약",
+  "styleNote": "문체 및 가독성 분석 결과 한 문장",
+  "readabilityNote": "본문 구조 개선 제안 한 문장"
+}`,
+        },
+      ],
+    });
+
+    const content = response.choices[0]?.message?.content ?? '{}';
+    try {
+      const parsed = JSON.parse(content);
+      return {
+        seoScore: Number(parsed.seoScore) || 0,
+        seoItems: Array.isArray(parsed.seoItems) ? parsed.seoItems : [],
+        keywords: Array.isArray(parsed.keywords) ? parsed.keywords : [],
+        titleSuggestions: Array.isArray(parsed.titleSuggestions) ? parsed.titleSuggestions : [],
+        metaSuggestion: parsed.metaSuggestion ?? '',
+        lead: parsed.lead ?? '',
+        tags: Array.isArray(parsed.tags) ? parsed.tags : [],
+        keyPoints: Array.isArray(parsed.keyPoints) ? parsed.keyPoints : [],
+        newsletterSummary: parsed.newsletterSummary ?? '',
+        styleNote: parsed.styleNote ?? '',
+        readabilityNote: parsed.readabilityNote ?? '',
+      };
+    } catch {
+      throw new BadGatewayException('AI 분석 결과를 해석하지 못했습니다.');
+    }
+  }
 
   async findAll(page = 1, limit = 10, categoryId?: number, status?: string) {
     const query = this.newsRepository.createQueryBuilder('news')
@@ -77,11 +227,15 @@ export class NewsService {
       );
     }
 
+    // ✅ 뉴스 저장 전 본문(content)을 바탕으로 AI 요약본 생성
+    const aiSummary = await this.generateAiSummary(dto.content);
+
     const news = this.newsRepository.create({
       ...dto,
       slug,
       authorId,
       tags,
+      aiSummary, // ✅ 생성된 요약본을 DB 엔티티에 매핑
       status: (dto.status as NewsStatus) || NewsStatus.DRAFT,
       publishedAt: dto.status === NewsStatus.PUBLISHED ? new Date() : undefined,
     });
@@ -109,6 +263,9 @@ export class NewsService {
       news.publishedAt = new Date();
     }
 
+    // (선택 사항) 만약 뉴스 내용(content)이 수정될 때마다 요약본도 갱신하고 싶다면
+    // update 메서드 안에도 const aiSummary = await this.generateAiSummary(dto.content); 를 추가할 수 있습니다.
+    
     Object.assign(news, { ...dto, tags: news.tags });
     return this.newsRepository.save(news);
   }
@@ -120,6 +277,62 @@ export class NewsService {
 
   async incrementViewCount(id: number) {
     await this.newsRepository.increment({ id }, 'viewCount', 1);
+  }
+
+  async searchNaverNews(query: string, display = 10, start = 1, sort: 'sim' | 'date' = 'date') {
+    const keyword = query?.trim();
+    if (!keyword) {
+      throw new BadRequestException('검색어를 입력해주세요.');
+    }
+
+    const clientId =
+      this.configService.get<string>('NAVER_SEARCH_CLIENT_ID') ||
+      this.configService.get<string>('NAVER_CLIENT_ID');
+    const clientSecret =
+      this.configService.get<string>('NAVER_SEARCH_CLIENT_SECRET') ||
+      this.configService.get<string>('NAVER_CLIENT_SECRET');
+    if (!clientId || !clientSecret) {
+      throw new BadRequestException(
+        'NAVER_SEARCH_CLIENT_ID와 NAVER_SEARCH_CLIENT_SECRET을 설정해주세요.',
+      );
+    }
+
+    const params = new URLSearchParams({
+      query: keyword,
+      display: String(Math.min(Math.max(display, 1), 100)),
+      start: String(Math.min(Math.max(start, 1), 1000)),
+      sort,
+    });
+
+    let response: Response;
+    try {
+      response = await fetch(`https://openapi.naver.com/v1/search/news.json?${params}`, {
+        headers: {
+          'X-Naver-Client-Id': clientId,
+          'X-Naver-Client-Secret': clientSecret,
+        },
+      });
+    } catch {
+      throw new BadGatewayException('네이버 뉴스 검색 API에 연결하지 못했습니다.');
+    }
+
+    if (!response.ok) {
+      throw new BadGatewayException('네이버 뉴스 검색 API 호출에 실패했습니다. Client ID와 Secret을 확인해주세요.');
+    }
+
+    const data = (await response.json()) as NaverNewsResponse;
+    return {
+      total: data.total,
+      start: data.start,
+      display: data.display,
+      items: data.items.map((item) => ({
+        title: this.cleanNaverText(item.title),
+        description: this.cleanNaverText(item.description),
+        link: item.link,
+        originalLink: item.originallink,
+        pubDate: item.pubDate,
+      })),
+    };
   }
 
   async publishScheduled() {
@@ -142,5 +355,15 @@ export class NewsService {
       .replace(/[^a-z0-9가-힣\s]/g, '')
       .replace(/\s+/g, '-')
       .substring(0, 100) + '-' + Date.now();
+  }
+
+  private cleanNaverText(value: string): string {
+    return value
+      .replace(/<[^>]+>/g, '')
+      .replace(/&quot;/g, '"')
+      .replace(/&apos;/g, "'")
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>');
   }
 }

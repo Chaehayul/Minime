@@ -32,6 +32,27 @@ export class NewsController {
     return this.newsService.findBySlug(slug);
   }
 
+  @Get('naver/search')
+  searchNaverNews(
+    @Query('query') query: string,
+    @Query('display') display: string,
+    @Query('start') start: string,
+    @Query('sort') sort: 'sim' | 'date',
+  ) {
+    return this.newsService.searchNaverNews(
+      query,
+      +display || 10,
+      +start || 1,
+      sort === 'sim' ? 'sim' : 'date',
+    );
+  }
+
+  @Post('ai/analyze')
+  @UseGuards(JwtAuthGuard)
+  analyzeWithAi(@Body() dto: { title?: string; content?: string; tags?: string[] }) {
+    return this.newsService.analyzeNews(dto);
+  }
+
   @Get(':id')
   async findOne(@Param('id') id: string, @Headers('x-view-token') viewToken: string) {
     if (viewToken) {

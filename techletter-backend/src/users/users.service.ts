@@ -1,14 +1,39 @@
 import { Injectable, ConflictException, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import { User, SocialProvider } from './user.entity';
+import { DeletedUser } from './deleted-user.entity';
+import { Bookmark } from '../interactions/entities/bookmark.entity';
+import { Like } from '../interactions/entities/like.entity';
+import { News } from '../news/news.entity';
+
+export interface UserReport {
+  monthlyReadCount: number;
+  bookmarkCount: number;
+  likeCount: number;
+  topCategories: Array<{
+    category: {
+      id: number;
+      slug: string;
+      name: string;
+    };
+  }>;
+}
 
 @Injectable()
 export class UsersService {
   constructor(
     @InjectRepository(User)
     private usersRepository: Repository<User>,
+    @InjectRepository(DeletedUser)
+    private deletedUsersRepository: Repository<DeletedUser>,
+    @InjectRepository(Bookmark)
+    private bookmarkRepository: Repository<Bookmark>,
+    @InjectRepository(Like)
+    private likeRepository: Repository<Like>,
+    @InjectRepository(News)
+    private newsRepository: Repository<News>,
   ) {}
 
   async findByEmail(email: string): Promise<User | null> {
@@ -19,6 +44,49 @@ export class UsersService {
     return this.usersRepository.findOne({ where: { id } });
   }
 
+  async getUserReport(userId: number): Promise<UserReport> {
+    const [bookmarks, likeCount] = await Promise.all([
+      this.bookmarkRepository.find({ where: { userId } }),
+      this.likeRepository.count({ where: { userId } }),
+    ]);
+    const bookmarkCount = bookmarks.length;
+    const newsIds = [...new Set(bookmarks.map((bookmark) => bookmark.newsId))];
+    const bookmarkedNews = newsIds.length
+      ? await this.newsRepository.find({
+          where: { id: In(newsIds) },
+          relations: ['category'],
+        })
+      : [];
+
+    const categoryMap = new Map<number, { count: number; category: NonNullable<News['category']> }>();
+    for (const news of bookmarkedNews) {
+      if (!news.category) continue;
+      const current = categoryMap.get(news.category.id);
+      categoryMap.set(news.category.id, {
+        count: (current?.count ?? 0) + 1,
+        category: news.category,
+      });
+    }
+
+    const topCategories = [...categoryMap.values()]
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5)
+      .map(({ category }) => ({
+        category: {
+          id: category.id,
+          slug: category.slug,
+          name: category.name,
+        },
+      }));
+
+    return {
+      monthlyReadCount: 0,
+      bookmarkCount,
+      likeCount,
+      topCategories,
+    };
+  }
+
   async createUser(data: {
     email: string;
     password?: string;
@@ -26,6 +94,8 @@ export class UsersService {
     socialProvider?: SocialProvider;
     socialId?: string;
   }): Promise<User> {
+    await this.ensureNotDeletedUser(data.email, data.socialProvider, data.socialId);
+
     const existing = await this.findByEmail(data.email);
     if (existing) throw new ConflictException('이미 사용 중인 이메일입니다.');
 
@@ -36,6 +106,34 @@ export class UsersService {
     const user = this.usersRepository.create({
       ...data,
       password: hashedPassword ?? undefined,
+    });
+
+    return this.usersRepository.save(user);
+  }
+
+  async findOrCreateSocialUser(data: {
+    email: string;
+    nickname: string;
+    socialProvider: SocialProvider;
+    socialId: string;
+    profileImage?: string;
+  }): Promise<User> {
+    await this.ensureNotDeletedUser(data.email, data.socialProvider, data.socialId);
+
+    const existing = await this.findByEmail(data.email);
+    if (existing) {
+      existing.socialProvider = data.socialProvider;
+      existing.socialId = data.socialId;
+      if (data.profileImage) existing.profileImage = data.profileImage;
+      return this.usersRepository.save(existing);
+    }
+
+    const user = this.usersRepository.create({
+      email: data.email,
+      nickname: data.nickname,
+      socialProvider: data.socialProvider,
+      socialId: data.socialId,
+      profileImage: data.profileImage,
     });
 
     return this.usersRepository.save(user);
@@ -78,7 +176,35 @@ export class UsersService {
     const user = await this.findById(userId);
     if (!user) throw new NotFoundException('유저를 찾을 수 없습니다.');
 
+    const deletedUser = this.deletedUsersRepository.create({
+      email: user.email,
+      socialProvider: user.socialProvider,
+      socialId: user.socialId,
+    });
+    await this.deletedUsersRepository.save(deletedUser);
+
     await this.usersRepository.remove(user);
     return { message: '회원 탈퇴가 완료되었습니다.' };
   }
+
+  private async ensureNotDeletedUser(
+    email: string,
+    socialProvider?: SocialProvider,
+    socialId?: string,
+  ) {
+    const deletedByEmail = await this.deletedUsersRepository.findOne({ where: { email } });
+    if (deletedByEmail) {
+      throw new ConflictException('탈퇴한 계정은 다시 가입할 수 없습니다.');
+    }
+
+    if (socialProvider && socialId) {
+      const deletedBySocial = await this.deletedUsersRepository.findOne({
+        where: { socialProvider, socialId },
+      });
+      if (deletedBySocial) {
+        throw new ConflictException('탈퇴한 소셜 계정은 다시 로그인할 수 없습니다.');
+      }
+    }
+  }
+
 }

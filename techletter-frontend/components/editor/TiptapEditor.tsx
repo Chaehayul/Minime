@@ -103,6 +103,12 @@ export default function TiptapEditor({ content, onChange, onAutoSave }: Props) {
       Youtube.configure({ width: 640, height: 360 }),
     ],
     content,
+    editorProps: {
+      attributes: {
+        spellcheck: 'true',
+        lang: 'ko',
+      },
+    },
     onUpdate: ({ editor }) => {
       const html = editor.getHTML();
       onChange(html);
