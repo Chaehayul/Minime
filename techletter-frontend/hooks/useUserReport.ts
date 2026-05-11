@@ -44,6 +44,7 @@ export function useUserReport() {
           setError(null);
           return;
         }
+        console.error("통계 데이터를 불러오지 못했습니다.", err);
         setError(err);
       } finally {
         setLoading(false);

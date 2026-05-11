@@ -443,7 +443,10 @@ export default function MyPage() {
         <section className="bg-white dark:bg-[#1E1E1E] rounded-2xl border border-gray-100 dark:border-[#2E2E2E] overflow-hidden">
           <div className="p-5">
             <div className="flex items-center gap-3">
-              <ProfileAvatar nickname={user?.nickname} size="lg" />
+              <div className="w-14 h-14 rounded-2xl bg-gray-900 dark:bg-white flex items-center justify-center
+                              text-white dark:text-gray-900 text-xl font-bold flex-shrink-0">
+                {user?.nickname?.[0]?.toUpperCase()}
+              </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="font-semibold text-base text-gray-900 dark:text-white truncate">

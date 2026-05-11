@@ -125,7 +125,9 @@ export default function HomePage() {
           </Link>
           {isLoggedIn ? (
             <Link href="/mypage">
-              <ProfileAvatar nickname={user?.nickname} />
+              <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold text-sm cursor-pointer shadow-sm">
+                {user?.nickname?.[0]?.toUpperCase() || 'U'}
+              </div>
             </Link>
           ) : (
             <div className="flex items-center gap-3">

@@ -31,6 +31,14 @@ const DRAFT_KEY_PREFIX = 'news_create_draft';
 
 function getDraftKey(userId?: number | string | null) {
   return `${DRAFT_KEY_PREFIX}:${userId ?? 'anonymous'}`;
+interface InterviewAnalysis {
+  transcript: string;
+  summary: string[];
+  keyQuotes: string[];
+  titleSuggestions: string[];
+  lead: string;
+  tags: string[];
+  articleOutline: string[];
 }
 
 function generateSlug(title: string): string {
@@ -183,6 +191,9 @@ export default function AdminNewsCreatePage() {
     titles: [], lead: '', tags: [], meta: '',
     keyPoints: [], newsletterSummary: '', styleNote: '',
   });
+  const [interviewFile, setInterviewFile] = useState<File | null>(null);
+  const [interviewResult, setInterviewResult] = useState<InterviewAnalysis | null>(null);
+  const interviewFileRef = useRef<HTMLInputElement>(null);
 
   // 예상 수신자
   const [estimatedRecipients, setEstimatedRecipients] = useState<Record<string, number>>({
@@ -488,6 +499,42 @@ export default function AdminNewsCreatePage() {
     }
   };
 
+  const handleInterviewAnalyze = async () => {
+    if (!interviewFile) { alert('인터뷰 음성 파일을 선택해 주세요.'); return; }
+    setAiLoading('interview');
+    try {
+      const formData = new FormData();
+      formData.append('file', interviewFile);
+      const res = await api.post('/interviews/analyze', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      setInterviewResult(res.data);
+    } catch (err: any) {
+      alert(err.response?.data?.message || '인터뷰 녹취 분석에 실패했습니다.');
+    } finally {
+      setAiLoading(null);
+    }
+  };
+
+  const applyInterviewToContent = () => {
+    if (!interviewResult) return;
+    const blocks = [
+      '<h2>인터뷰 핵심 요약</h2>',
+      '<ul>',
+      ...interviewResult.summary.map(item => `<li>${item}</li>`),
+      '</ul>',
+      interviewResult.keyQuotes.length ? '<h2>주요 발언</h2>' : '',
+      ...interviewResult.keyQuotes.map(item => `<blockquote>${item}</blockquote>`),
+      interviewResult.articleOutline.length ? '<h2>기사 구성안</h2>' : '',
+      '<ol>',
+      ...interviewResult.articleOutline.map(item => `<li>${item}</li>`),
+      '</ol>',
+      '<h2>전체 녹취록</h2>',
+      `<p>${interviewResult.transcript.replace(/\n/g, '<br />')}</p>`,
+    ].filter(Boolean);
+    setForm(f => ({ ...f, content: `${f.content || ''}${f.content ? '<hr />' : ''}${blocks.join('')}` }));
+  };
+
   const seoScore = aiSeoResult?.score ?? basicSeoScore;
   const seoItems = aiSeoResult?.items.length ? aiSeoResult.items : basicSeoItems;
   const seoColor = seoScore >= 80 ? 'text-emerald-400' : seoScore >= 50 ? 'text-yellow-400' : 'text-red-400';
@@ -566,7 +613,7 @@ export default function AdminNewsCreatePage() {
   );
 
   return (
-    <div className="min-h-screen transition-colors duration-200 pb-36">
+    <div className="min-h-screen transition-colors duration-200 pb-10">
       <header className="sticky top-0 z-50 bg-gray-950 border-b border-gray-800">
         <div className="max-w-5xl mx-auto px-4 h-14 flex items-center gap-3">
           <button onClick={() => {
@@ -1095,6 +1142,132 @@ export default function AdminNewsCreatePage() {
               <p className="text-xs text-gray-500">제목 또는 본문 입력 후 전체 분석을 실행하면 AI가 SEO, 제목, 태그, 리드문 등을 한번에 분석해드려요.</p>
 
               {/* AI 결과가 없을 때 */}
+              <div className="border-t border-gray-800 pt-4 flex flex-col gap-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-xs font-bold text-white">인터뷰 녹취</div>
+                    <div className="text-xs text-gray-500 mt-0.5">mp3, m4a, wav, webm / 25MB 이하</div>
+                  </div>
+                  <button
+                    onClick={() => interviewFileRef.current?.click()}
+                    className="px-2.5 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg text-xs transition"
+                  >
+                    파일 선택
+                  </button>
+                </div>
+                <input
+                  ref={interviewFileRef}
+                  type="file"
+                  accept="audio/*,video/mp4,video/webm"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0] ?? null;
+                    setInterviewFile(file);
+                    setInterviewResult(null);
+                  }}
+                />
+                {interviewFile && (
+                  <div className="bg-gray-800 rounded-lg p-2.5">
+                    <div className="text-xs text-gray-300 truncate">{interviewFile.name}</div>
+                    <div className="text-xs text-gray-500 mt-0.5">{(interviewFile.size / 1024 / 1024).toFixed(1)}MB</div>
+                  </div>
+                )}
+                <button
+                  onClick={handleInterviewAnalyze}
+                  disabled={!interviewFile || !!aiLoading}
+                  className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-lg text-xs font-bold transition flex items-center justify-center gap-2"
+                >
+                  {aiLoading === 'interview' ? (
+                    <><svg className="animate-spin w-3 h-3" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>녹취 분석 중...</>
+                  ) : '녹취록 만들고 요약'}
+                </button>
+
+                {interviewResult && (
+                  <div className="flex flex-col gap-3">
+                    <div>
+                      <div className="text-xs font-medium text-gray-400 mb-2">3줄 요약</div>
+                      <div className="flex flex-col gap-1.5">
+                        {interviewResult.summary.map((item, i) => (
+                          <div key={i} className="flex gap-2 text-xs text-gray-300 leading-relaxed">
+                            <span className="text-indigo-400 font-bold">{i + 1}.</span>
+                            <span>{item}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {interviewResult.titleSuggestions.length > 0 && (
+                      <div>
+                        <div className="text-xs font-medium text-gray-400 mb-2">제목 후보</div>
+                        <div className="flex flex-col gap-2">
+                          {interviewResult.titleSuggestions.map((title, i) => (
+                            <div key={i} className="bg-gray-800 rounded-lg p-2.5 flex justify-between items-start gap-2">
+                              <p className="text-xs text-gray-300 flex-1 leading-relaxed">{title}</p>
+                              <button
+                                onClick={() => setForm(f => ({ ...f, title, slug: generateSlug(title) }))}
+                                className="text-xs text-blue-400 hover:text-blue-300 transition flex-shrink-0"
+                              >
+                                적용
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {interviewResult.keyQuotes.length > 0 && (
+                      <div>
+                        <div className="text-xs font-medium text-gray-400 mb-2">주요 발언</div>
+                        <div className="flex flex-col gap-2">
+                          {interviewResult.keyQuotes.slice(0, 3).map((quote, i) => (
+                            <div key={i} className="bg-gray-800 rounded-lg p-2.5 text-xs text-gray-300 leading-relaxed">
+                              {quote}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        onClick={() => setForm(f => ({ ...f, lead: interviewResult.lead || interviewResult.summary.join(' ') }))}
+                        className="py-2 bg-gray-800 hover:bg-gray-700 text-blue-300 rounded-lg text-xs transition"
+                      >
+                        리드문 적용
+                      </button>
+                      <button
+                        onClick={() => setPremiumContent(p => ({ ...p, keyPoints: interviewResult.summary }))}
+                        className="py-2 bg-gray-800 hover:bg-gray-700 text-yellow-300 rounded-lg text-xs transition"
+                      >
+                        핵심 적용
+                      </button>
+                      <button
+                        onClick={() => {
+                          const newTags = interviewResult.tags.filter(t => !form.tags.includes(t));
+                          setForm(f => ({ ...f, tags: [...f.tags, ...newTags] }));
+                        }}
+                        className="py-2 bg-gray-800 hover:bg-gray-700 text-emerald-300 rounded-lg text-xs transition"
+                      >
+                        태그 추가
+                      </button>
+                      <button
+                        onClick={applyInterviewToContent}
+                        className="py-2 bg-gray-800 hover:bg-gray-700 text-purple-300 rounded-lg text-xs transition"
+                      >
+                        본문 삽입
+                      </button>
+                    </div>
+
+                    <details className="bg-gray-950 rounded-lg border border-gray-800 p-2.5">
+                      <summary className="cursor-pointer text-xs text-gray-400">전체 녹취록</summary>
+                      <p className="mt-2 max-h-48 overflow-y-auto whitespace-pre-wrap text-xs leading-relaxed text-gray-500">
+                        {interviewResult.transcript}
+                      </p>
+                    </details>
+                  </div>
+                )}
+              </div>
+
               {!aiSeoResult && !aiLoading && (
                 <div className="text-center py-6 text-gray-600 text-xs">
                   아직 분석 결과가 없어요.<br />전체 분석 버튼을 눌러주세요!

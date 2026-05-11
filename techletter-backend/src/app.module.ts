@@ -7,18 +7,21 @@ import { AppService } from './app.service';
 import { UsersModule } from './users/users.module';
 import { AuthModule } from './auth/auth.module';
 import { NewsModule } from './news/news.module';
+import { ChatbotModule } from './chatbot/chatbot.module';
 import { CategoriesModule } from './categories/categories.module';
 import { TagsModule } from './tags/tags.module';
 import { InteractionsModule } from './interactions/interactions.module';
 import { SubscriptionsModule } from './subscriptions/subscriptions.module';
 import { StatsModule } from './stats/stats.module';
 import { UploadModule } from './upload/upload.module';
-import { NewsletterModule } from './newsletter/newsletter.module';
-import { SearchModule } from './search/search.module';
+import { InterviewsModule } from './interviews/interviews.module';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true }),
+    ConfigModule.forRoot({
+      isGlobal: true,
+      envFilePath: ['.env', '../.env'],
+    }),
     ScheduleModule.forRoot(),
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
@@ -40,12 +43,12 @@ import { SearchModule } from './search/search.module';
     NewsModule,
     CategoriesModule,
     TagsModule,
+    ChatbotModule,
     InteractionsModule,
     SubscriptionsModule,
     StatsModule,
     UploadModule,
-    NewsletterModule,
-    SearchModule,
+    InterviewsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
