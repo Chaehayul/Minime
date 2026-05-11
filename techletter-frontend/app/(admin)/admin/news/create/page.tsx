@@ -31,6 +31,8 @@ const DRAFT_KEY_PREFIX = 'news_create_draft';
 
 function getDraftKey(userId?: number | string | null) {
   return `${DRAFT_KEY_PREFIX}:${userId ?? 'anonymous'}`;
+}
+
 interface InterviewAnalysis {
   transcript: string;
   summary: string[];
