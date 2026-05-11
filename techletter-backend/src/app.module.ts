@@ -14,6 +14,7 @@ import { InteractionsModule } from './interactions/interactions.module';
 import { SubscriptionsModule } from './subscriptions/subscriptions.module';
 import { StatsModule } from './stats/stats.module';
 import { UploadModule } from './upload/upload.module';
+import { InterviewsModule } from './interviews/interviews.module';
 
 @Module({
   imports: [
@@ -47,6 +48,7 @@ import { UploadModule } from './upload/upload.module';
     SubscriptionsModule,
     StatsModule,
     UploadModule,
+    InterviewsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
