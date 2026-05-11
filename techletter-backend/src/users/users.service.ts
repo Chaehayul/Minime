@@ -1,9 +1,25 @@
 import { Injectable, ConflictException, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import { User, SocialProvider } from './user.entity';
 import { DeletedUser } from './deleted-user.entity';
+import { Bookmark } from '../interactions/entities/bookmark.entity';
+import { Like } from '../interactions/entities/like.entity';
+import { News } from '../news/news.entity';
+
+export interface UserReport {
+  monthlyReadCount: number;
+  bookmarkCount: number;
+  likeCount: number;
+  topCategories: Array<{
+    category: {
+      id: number;
+      slug: string;
+      name: string;
+    };
+  }>;
+}
 
 @Injectable()
 export class UsersService {
@@ -12,6 +28,12 @@ export class UsersService {
     private usersRepository: Repository<User>,
     @InjectRepository(DeletedUser)
     private deletedUsersRepository: Repository<DeletedUser>,
+    @InjectRepository(Bookmark)
+    private bookmarkRepository: Repository<Bookmark>,
+    @InjectRepository(Like)
+    private likeRepository: Repository<Like>,
+    @InjectRepository(News)
+    private newsRepository: Repository<News>,
   ) {}
 
   async findByEmail(email: string): Promise<User | null> {
@@ -20,6 +42,49 @@ export class UsersService {
 
   async findById(id: number): Promise<User | null> {
     return this.usersRepository.findOne({ where: { id } });
+  }
+
+  async getUserReport(userId: number): Promise<UserReport> {
+    const [bookmarks, likeCount] = await Promise.all([
+      this.bookmarkRepository.find({ where: { userId } }),
+      this.likeRepository.count({ where: { userId } }),
+    ]);
+    const bookmarkCount = bookmarks.length;
+    const newsIds = [...new Set(bookmarks.map((bookmark) => bookmark.newsId))];
+    const bookmarkedNews = newsIds.length
+      ? await this.newsRepository.find({
+          where: { id: In(newsIds) },
+          relations: ['category'],
+        })
+      : [];
+
+    const categoryMap = new Map<number, { count: number; category: NonNullable<News['category']> }>();
+    for (const news of bookmarkedNews) {
+      if (!news.category) continue;
+      const current = categoryMap.get(news.category.id);
+      categoryMap.set(news.category.id, {
+        count: (current?.count ?? 0) + 1,
+        category: news.category,
+      });
+    }
+
+    const topCategories = [...categoryMap.values()]
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5)
+      .map(({ category }) => ({
+        category: {
+          id: category.id,
+          slug: category.slug,
+          name: category.name,
+        },
+      }));
+
+    return {
+      monthlyReadCount: 0,
+      bookmarkCount,
+      likeCount,
+      topCategories,
+    };
   }
 
   async createUser(data: {

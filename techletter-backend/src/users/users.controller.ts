@@ -13,6 +13,12 @@ export class UsersController {
     return req.user;
   }
 
+  @Get('me/report')
+  @UseGuards(JwtAuthGuard)
+  getMyReport(@Request() req: any) {
+    return this.usersService.getUserReport(req.user.id);
+  }
+
   @Put('me')
   @UseGuards(JwtAuthGuard)
   updateMe(@Request() req: any, @Body() body: { nickname?: string }) {

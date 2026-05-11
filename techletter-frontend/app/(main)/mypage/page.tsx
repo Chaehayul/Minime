@@ -6,6 +6,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { useTheme } from 'next-themes';
 import api, { getImageUrl } from '@/lib/api';
+import ProfileAvatar from '@/components/common/ProfileAvatar';
 // 실제 파일 경로에 맞게 필요시 수정하세요
 import { useUserReport } from '@/hooks/useUserReport';
 
@@ -94,6 +95,50 @@ const formatDate = (dateStr: string | null) => {
   const d = new Date(dateStr);
   return `${d.getFullYear()}년 ${d.getMonth() + 1}월 ${d.getDate()}일`;
 };
+
+function AdminShortcutIcon({ type }: { type: 'write' | 'manage' | 'stats' }) {
+  const commonProps = {
+    width: 22,
+    height: 22,
+    viewBox: '0 0 24 24',
+    fill: 'none',
+    stroke: 'currentColor',
+    strokeWidth: 2,
+    strokeLinecap: 'round' as const,
+    strokeLinejoin: 'round' as const,
+  };
+
+  if (type === 'write') {
+    return (
+      <svg {...commonProps}>
+        <path d="M12 20h9" />
+        <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+      </svg>
+    );
+  }
+
+  if (type === 'manage') {
+    return (
+      <svg {...commonProps}>
+        <path d="M8 6h13" />
+        <path d="M8 12h13" />
+        <path d="M8 18h13" />
+        <path d="M3 6h.01" />
+        <path d="M3 12h.01" />
+        <path d="M3 18h.01" />
+      </svg>
+    );
+  }
+
+  return (
+    <svg {...commonProps}>
+      <path d="M3 3v18h18" />
+      <path d="M7 16v-5" />
+      <path d="M12 16V7" />
+      <path d="M17 16v-8" />
+    </svg>
+  );
+}
 
 function SubscriptionSection({
   subscription,
@@ -490,9 +535,9 @@ export default function MyPage() {
             <p className="text-[11px] font-semibold text-blue-500 dark:text-blue-400 mb-3">관리자</p>
             <div className="grid grid-cols-3 gap-2">
               {[
-                { href: '/admin/news/create', icon: '✏️', label: '뉴스 작성' },
-                { href: '/admin/news',        icon: '📋', label: '뉴스 관리' },
-                { href: '/admin/stats',       icon: '📊', label: '통계 분석' },
+                { href: '/admin/news/create', icon: 'write' as const, label: '뉴스 작성' },
+                { href: '/admin/news',        icon: 'manage' as const, label: '뉴스 관리' },
+                { href: '/admin/stats',       icon: 'stats' as const, label: '통계 분석' },
               ].map(({ href, icon, label }) => (
                 <Link
                   key={href}
@@ -500,7 +545,9 @@ export default function MyPage() {
                   className="flex flex-col items-center gap-1.5 py-3 bg-white dark:bg-[#2A2A2A]
                              rounded-xl text-blue-600 dark:text-blue-300 hover:shadow-sm transition"
                 >
-                  <span className="text-lg">{icon}</span>
+                  <span className="flex h-7 w-7 items-center justify-center">
+                    <AdminShortcutIcon type={icon} />
+                  </span>
                   <span className="text-[11px] font-medium">{label}</span>
                 </Link>
               ))}
