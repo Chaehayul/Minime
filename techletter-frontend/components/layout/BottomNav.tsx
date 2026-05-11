@@ -57,10 +57,14 @@ export default function BottomNav() {
             <Link
               key={item.href}
               href={item.href}
-              className="flex flex-col items-center gap-1 py-3"
+              className={`flex flex-col items-center gap-1 py-3 transition ${
+                active
+                  ? 'text-blue-600 dark:text-blue-500'
+                  : 'text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200'
+              }`}
             >
               {renderIcon(item.icon, active)}
-              <span className={`text-xs ${active ? 'text-blue-500' : 'text-gray-400'}`}>{item.label}</span>
+              <span className="text-xs">{item.label}</span>
             </Link>
           );
         })}

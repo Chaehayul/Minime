@@ -47,6 +47,12 @@ export class NewsController {
     );
   }
 
+  @Post('ai/analyze')
+  @UseGuards(JwtAuthGuard)
+  analyzeWithAi(@Body() dto: { title?: string; content?: string; tags?: string[] }) {
+    return this.newsService.analyzeNews(dto);
+  }
+
   @Get(':id')
   async findOne(@Param('id') id: string, @Headers('x-view-token') viewToken: string) {
     if (viewToken) {

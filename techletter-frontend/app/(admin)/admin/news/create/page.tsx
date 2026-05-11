@@ -20,6 +20,17 @@ interface AiSeoResult {
   readabilityNote: string;
 }
 
+interface DraftSummary {
+  key: string;
+  title: string;
+  savedAt: string;
+}
+
+const LEGACY_DRAFT_KEY = 'news_draft';
+const DRAFT_KEY_PREFIX = 'news_create_draft';
+
+function getDraftKey(userId?: number | string | null) {
+  return `${DRAFT_KEY_PREFIX}:${userId ?? 'anonymous'}`;
 interface InterviewAnalysis {
   transcript: string;
   summary: string[];
@@ -51,6 +62,70 @@ function calcBasicSeo(form: any) {
     { label: '리드문 입력',               ok: form.lead.length > 0,                                   suggestion: '리드문을 입력해주세요.' },
     { label: '소제목(H2/H3) 포함',        ok: hasH2,                                                  suggestion: '본문에 소제목을 추가하면 가독성이 향상됩니다.' },
   ];
+}
+
+function getSeoReport(form: any) {
+  const contentText = form.content.replace(/<[^>]*>/g, '');
+  const hasHeading = form.content.includes('<h2') || form.content.includes('<h3');
+  const slugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+  const required = [
+    {
+      label: '제목 길이',
+      ok: form.title.length >= 10 && form.title.length <= 60,
+      value: `${form.title.length}/60자`,
+      suggestion: '검색 결과에서 잘리지 않도록 10~60자로 맞춰주세요.',
+    },
+    {
+      label: '메타 설명',
+      ok: form.metaDescription.length >= 50 && form.metaDescription.length <= 160,
+      value: `${form.metaDescription.length}/160자`,
+      suggestion: '검색 결과에 보이는 설명입니다. 50~160자로 요약해주세요.',
+    },
+    {
+      label: 'URL 슬러그',
+      ok: slugPattern.test(form.slug),
+      value: form.slug || '없음',
+      suggestion: '영문 소문자, 숫자, 하이픈만 사용하면 주소가 안정적입니다.',
+    },
+    {
+      label: '본문 분량',
+      ok: contentText.length >= 500,
+      value: `${contentText.length}자`,
+      suggestion: '검색 품질을 위해 본문을 500자 이상 작성해주세요.',
+    },
+  ];
+
+  const recommended = [
+    {
+      label: '태그',
+      ok: form.tags.length >= 3,
+      value: `${form.tags.length}개`,
+      suggestion: '주요 키워드 태그를 3개 이상 추가해주세요.',
+    },
+    {
+      label: '썸네일',
+      ok: !!form.thumbnailUrl,
+      value: form.thumbnailUrl ? '등록됨' : '없음',
+      suggestion: '공유 화면과 목록에서 보일 대표 이미지를 등록해주세요.',
+    },
+    {
+      label: '리드문',
+      ok: !!form.lead.trim(),
+      value: form.lead ? `${form.lead.length}자` : '없음',
+      suggestion: '기사의 핵심을 1~2문장으로 먼저 보여주세요.',
+    },
+    {
+      label: '소제목',
+      ok: hasHeading,
+      value: hasHeading ? '포함' : '없음',
+      suggestion: 'H2/H3 소제목을 넣으면 읽기 흐름이 좋아집니다.',
+    },
+  ];
+
+  const items = [...required, ...recommended];
+  const score = Math.round((items.filter((item) => item.ok).length / items.length) * 100);
+  return { required, recommended, items, score };
 }
 
 export default function AdminNewsCreatePage() {
@@ -94,6 +169,11 @@ export default function AdminNewsCreatePage() {
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [hasUnsaved, setHasUnsaved] = useState(false);
   const [autoSaving, setAutoSaving] = useState(false);
+  const [draftKey, setDraftKey] = useState(getDraftKey());
+  const [draftKeyReady, setDraftKeyReady] = useState(false);
+  const [drafts, setDrafts] = useState<DraftSummary[]>([]);
+  const [showDraftManager, setShowDraftManager] = useState(false);
+  const skipDirtyCheckRef = useRef(false);
 
   // AI 패널
   const [showAiPanel, setShowAiPanel] = useState(false);
@@ -129,43 +209,124 @@ export default function AdminNewsCreatePage() {
     (basicSeoItems.filter(i => i.ok).length / basicSeoItems.length) * 100
   );
 
+  const refreshDrafts = useCallback(() => {
+    const summaries: DraftSummary[] = [];
+    for (let i = 0; i < localStorage.length; i += 1) {
+      const key = localStorage.key(i);
+      if (!key || (!key.startsWith(DRAFT_KEY_PREFIX) && key !== LEGACY_DRAFT_KEY)) continue;
+      try {
+        const parsed = JSON.parse(localStorage.getItem(key) || '{}');
+        if (!parsed.form) continue;
+        summaries.push({
+          key,
+          title: parsed.form.title || '제목 없는 초안',
+          savedAt: parsed.savedAt || new Date().toISOString(),
+        });
+      } catch {}
+    }
+    setDrafts(summaries.sort((a, b) => new Date(b.savedAt).getTime() - new Date(a.savedAt).getTime()));
+  }, []);
+
+  const saveDraft = useCallback((key = draftKey) => {
+    if (!form.title.trim() && !form.content.trim()) return false;
+
+    localStorage.setItem(key, JSON.stringify({
+      form,
+      premiumContent,
+      newsletterOption,
+      savedAt: new Date().toISOString(),
+    }));
+    if (key !== LEGACY_DRAFT_KEY) localStorage.removeItem(LEGACY_DRAFT_KEY);
+    setLastSaved(new Date());
+    setHasUnsaved(false);
+    refreshDrafts();
+    return true;
+  }, [draftKey, form, premiumContent, newsletterOption, refreshDrafts]);
+
+  const loadDraft = (key: string) => {
+    const raw = localStorage.getItem(key);
+    if (!raw) return;
+    if (hasUnsaved && form.title && !confirm('현재 작성 중인 내용이 있어요. 선택한 초안을 불러올까요?')) return;
+    try {
+      const parsed = JSON.parse(raw);
+      if (!parsed.form) return;
+      skipDirtyCheckRef.current = true;
+      setForm(parsed.form);
+      if (parsed.premiumContent) setPremiumContent(parsed.premiumContent);
+      if (parsed.newsletterOption) setNewsletterOption(parsed.newsletterOption);
+      setDraftKey(key);
+      setLastSaved(parsed.savedAt ? new Date(parsed.savedAt) : null);
+      setHasUnsaved(false);
+      setShowDraftManager(false);
+    } catch {}
+  };
+
+  const deleteDraft = (key: string) => {
+    if (!confirm('이 임시저장 초안을 삭제할까요?')) return;
+    localStorage.removeItem(key);
+    refreshDrafts();
+  };
+
   useEffect(() => {
+    api.get('/users/me')
+      .then((res) => setDraftKey(getDraftKey(res.data?.id)))
+      .catch(() => setDraftKey(getDraftKey()))
+      .finally(() => setDraftKeyReady(true));
+    refreshDrafts();
+  }, [refreshDrafts]);
+
+  useEffect(() => {
+    if (!draftKeyReady) return;
     api.get('/categories').then(res => setCategories(res.data)).catch(() => {});
-    const saved = localStorage.getItem('news_draft');
+    const saved = localStorage.getItem(draftKey) || localStorage.getItem(LEGACY_DRAFT_KEY);
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        if (confirm('이전에 작성 중인 내용이 있어요. 복구할까요?')) {
+        const shouldRestore = confirm('이전에 작성 중인 내용이 있어요. 복구할까요?');
+        if (shouldRestore) {
+          skipDirtyCheckRef.current = true;
           setForm(parsed.form);
           if (parsed.premiumContent) setPremiumContent(parsed.premiumContent);
           if (parsed.newsletterOption) setNewsletterOption(parsed.newsletterOption);
+          setLastSaved(parsed.savedAt ? new Date(parsed.savedAt) : null);
+          setHasUnsaved(false);
         }
-        localStorage.removeItem('news_draft');
+        if (shouldRestore) localStorage.setItem(draftKey, JSON.stringify({ ...parsed, savedAt: parsed.savedAt ?? new Date().toISOString() }));
+        else localStorage.removeItem(draftKey);
+        localStorage.removeItem(LEGACY_DRAFT_KEY);
       } catch {}
     }
-  }, []);
+  }, [draftKey, draftKeyReady]);
 
-  useEffect(() => { setHasUnsaved(true); }, [form, premiumContent, newsletterOption]);
+  useEffect(() => {
+    if (skipDirtyCheckRef.current) {
+      skipDirtyCheckRef.current = false;
+      return;
+    }
+    setHasUnsaved(true);
+  }, [form, premiumContent, newsletterOption]);
 
   useEffect(() => {
     if (!hasUnsaved || !form.title) return;
     const timer = setTimeout(() => {
       setAutoSaving(true);
-      localStorage.setItem('news_draft', JSON.stringify({ form, premiumContent, newsletterOption }));
-      setLastSaved(new Date());
-      setHasUnsaved(false);
+      saveDraft();
       setAutoSaving(false);
-    }, 30000);
+    }, 5000);
     return () => clearTimeout(timer);
-  }, [hasUnsaved, form, premiumContent, newsletterOption]);
+  }, [hasUnsaved, form.title, saveDraft]);
 
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (hasUnsaved && form.title) { e.preventDefault(); e.returnValue = ''; }
+      if (hasUnsaved && form.title) {
+        saveDraft();
+        e.preventDefault();
+        e.returnValue = '';
+      }
     };
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, [hasUnsaved, form.title]);
+  }, [hasUnsaved, form.title, saveDraft]);
 
   useEffect(() => {
     if (!newsletterOption.enabled) return;
@@ -190,16 +351,23 @@ export default function AdminNewsCreatePage() {
   };
 
   const addTag = () => {
-    const tag = tagInput.trim().replace(/^#/, '');
-    if (tag && !form.tags.includes(tag)) setForm(f => ({ ...f, tags: [...f.tags, tag] }));
+    const tags = tagInput
+      .split(/[\s,，、]+/)
+      .map((tag) => tag.trim().replace(/^#+/, ''))
+      .filter(Boolean);
+
+    if (tags.length) {
+      setForm((f) => ({
+        ...f,
+        tags: [...f.tags, ...tags.filter((tag) => !f.tags.includes(tag))],
+      }));
+    }
     setTagInput('');
   };
   const removeTag = (tag: string) => setForm(f => ({ ...f, tags: f.tags.filter(t => t !== tag) }));
 
   const handleManualSave = () => {
-    localStorage.setItem('news_draft', JSON.stringify({ form, premiumContent, newsletterOption }));
-    setLastSaved(new Date());
-    setHasUnsaved(false);
+    saveDraft();
     alert('임시저장 되었습니다.');
   };
 
@@ -218,7 +386,8 @@ export default function AdminNewsCreatePage() {
           scheduledAt: newsletterOption.isScheduled ? newsletterOption.scheduledAt : null,
         });
       }
-      localStorage.removeItem('news_draft');
+      localStorage.removeItem(draftKey);
+      localStorage.removeItem(LEGACY_DRAFT_KEY);
       setHasUnsaved(false);
       if (status === 'draft') alert('임시저장 되었습니다.');
       else if (newsletterOption.enabled) alert(newsletterOption.isScheduled ? '기사 저장 + 뉴스레터 예약 완료!' : '기사 발행 + 뉴스레터 발송 완료!');
@@ -235,45 +404,74 @@ export default function AdminNewsCreatePage() {
     setAiLoading('analyze');
     const contentText = form.content.replace(/<[^>]*>/g, '').slice(0, 1000);
     try {
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
+      const { data: aiResult } = await api.post('/news/ai/analyze', {
+        title: form.title,
+        content: form.content,
+        tags: form.tags,
+      });
+
+      setAiSeoResult({
+        score: aiResult.seoScore || 0,
+        items: aiResult.seoItems || [],
+        keywords: aiResult.keywords || [],
+        titleSuggestions: aiResult.titleSuggestions || [],
+        metaSuggestion: aiResult.metaSuggestion || '',
+        readabilityNote: aiResult.readabilityNote || '',
+      });
+      setAiGeneratedContents({
+        titles: aiResult.titleSuggestions || [],
+        lead: aiResult.lead || '',
+        tags: aiResult.tags || [],
+        meta: aiResult.metaSuggestion || '',
+        keyPoints: aiResult.keyPoints || [],
+        newsletterSummary: aiResult.newsletterSummary || '',
+        styleNote: aiResult.styleNote || '',
+      });
+      return;
+
+      const response = await fetch('/news/ai/analyze', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': '',
+        },
         body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
-          max_tokens: 1000,
+          model: 'gpt-4o-mini',
           messages: [{
             role: 'user',
             content: `다음 뉴스 기사를 분석하여 JSON 형식으로만 응답해주세요. 다른 텍스트는 절대 포함하지 마세요.
 
-제목: ${form.title || '(미입력)'}
-본문: ${contentText || '(미입력)'}
-현재 태그: ${form.tags.join(', ') || '(없음)'}
+  제목: ${form.title || '(미입력)'}
+  본문: ${contentText || '(미입력)'}
+  현재 태그: ${form.tags.join(', ') || '(없음)'}
 
-다음 JSON 구조로 응답하세요:
-{
-  "seoScore": 75,
-  "seoItems": [
-    {"label": "제목이 검색 친화적입니다", "ok": true, "suggestion": ""},
-    {"label": "키워드가 본문에 적절히 분포되어 있습니다", "ok": true, "suggestion": ""},
-    {"label": "소제목 추가를 권장합니다", "ok": false, "suggestion": "H2 태그로 소제목을 2~3개 추가하면 가독성과 SEO가 향상됩니다"},
-    {"label": "키워드 반복 빈도가 적절합니다", "ok": true, "suggestion": ""},
-    {"label": "검색 노출 가능성이 높습니다", "ok": false, "suggestion": "롱테일 키워드를 제목에 포함시켜 보세요"}
-  ],
-  "keywords": ["핵심키워드1", "핵심키워드2", "핵심키워드3"],
-  "titleSuggestions": ["추천제목1", "추천제목2", "추천제목3"],
-  "metaSuggestion": "SEO에 최적화된 메타 설명 (50~160자)",
-  "lead": "2문장 이내의 리드문",
-  "tags": ["태그1", "태그2", "태그3", "태그4", "태그5"],
-  "keyPoints": ["핵심포인트1", "핵심포인트2", "핵심포인트3"],
-  "newsletterSummary": "뉴스레터용 2~3문장 요약",
-  "styleNote": "문체 및 가독성 분석 결과 한 문장",
-  "readabilityNote": "본문 구조 개선 제안 한 문장"
-}`
+  다음 JSON 구조로 응답하세요:
+  {
+    "seoScore": 75,
+    "seoItems": [
+      {"label": "제목이 검색 친화적입니다", "ok": true, "suggestion": ""},
+      {"label": "키워드가 본문에 적절히 분포되어 있습니다", "ok": true, "suggestion": ""},
+      {"label": "소제목 추가를 권장합니다", "ok": false, "suggestion": "H2 태그로 소제목을 2~3개 추가하면 가독성과 SEO가 향상됩니다"},
+      {"label": "키워드 반복 빈도가 적절합니다", "ok": true, "suggestion": ""},
+      {"label": "검색 노출 가능성이 높습니다", "ok": false, "suggestion": "롱테일 키워드를 제목에 포함시켜 보세요"}
+    ],
+    "keywords": ["핵심키워드1", "핵심키워드2", "핵심키워드3"],
+    "titleSuggestions": ["추천제목1", "추천제목2", "추천제목3"],
+    "metaSuggestion": "SEO에 최적화된 메타 설명 (50~160자)",
+    "lead": "2문장 이내의 리드문",
+    "tags": ["태그1", "태그2", "태그3", "태그4", "태그5"],
+    "keyPoints": ["핵심포인트1", "핵심포인트2", "핵심포인트3"],
+    "newsletterSummary": "뉴스레터용 2~3문장 요약",
+    "styleNote": "문체 및 가독성 분석 결과 한 문장",
+    "readabilityNote": "본문 구조 개선 제안 한 문장"
+  }`
           }],
+          temperature: 0.7,
         }),
       });
       const data = await response.json();
-      const text = data.content?.[0]?.text || '{}';
+      // ✅ 여기가 핵심 변경 포인트
+      const text = data.choices?.[0]?.message?.content || '{}';
       const clean = text.replace(/```json|```/g, '').trim();
       const parsed = JSON.parse(clean);
 
@@ -294,8 +492,8 @@ export default function AdminNewsCreatePage() {
         newsletterSummary: parsed.newsletterSummary || '',
         styleNote: parsed.styleNote || '',
       });
-    } catch (err) {
-      alert('AI 분석 중 오류가 발생했습니다.');
+    } catch (err: any) {
+      alert(err.response?.data?.message || err.message || 'AI 분석 중 오류가 발생했습니다.');
     } finally {
       setAiLoading(null);
     }
@@ -341,6 +539,78 @@ export default function AdminNewsCreatePage() {
   const seoItems = aiSeoResult?.items.length ? aiSeoResult.items : basicSeoItems;
   const seoColor = seoScore >= 80 ? 'text-emerald-400' : seoScore >= 50 ? 'text-yellow-400' : 'text-red-400';
   const seoBarColor = seoScore >= 80 ? 'bg-emerald-500' : seoScore >= 50 ? 'bg-yellow-500' : 'bg-red-500';
+  const seoReport = getSeoReport(form);
+  const displayedSeoScore = aiSeoResult ? seoScore : seoReport.score;
+  const displayedSeoColor = displayedSeoScore >= 80 ? 'text-emerald-400' : displayedSeoScore >= 50 ? 'text-yellow-400' : 'text-red-400';
+  const displayedSeoBarColor = displayedSeoScore >= 80 ? 'bg-emerald-500' : displayedSeoScore >= 50 ? 'bg-yellow-500' : 'bg-red-500';
+  const seoStatusLabel = displayedSeoScore >= 80 ? '발행 준비 좋음' : displayedSeoScore >= 50 ? '보완 필요' : '필수 항목 부족';
+  const metaPreview = form.metaDescription || form.lead || form.content.replace(/<[^>]*>/g, '').slice(0, 120);
+
+  const premiumContentSection = (
+    <div className="order-[8] bg-gray-800 border border-yellow-600/30 rounded-xl p-4 flex flex-col gap-4">
+      <div className="flex items-center gap-2">
+        <span className="text-xs px-2 py-0.5 bg-yellow-500/20 text-yellow-400 rounded-full font-medium">구독자 전용</span>
+        <span className="text-sm text-gray-500">뉴스레터에만 포함되는 추가 콘텐츠</span>
+      </div>
+
+      <div>
+        <label className="text-xs text-gray-500 mb-2 block">핵심 포인트</label>
+        {premiumContent.keyPoints.map((point, i) => (
+          <div key={i} className="flex gap-2 mb-2">
+            <span className="text-yellow-400 text-sm pt-2 w-6">{i + 1}</span>
+            <input value={point} onChange={(e) => {
+              const updated = [...premiumContent.keyPoints];
+              updated[i] = e.target.value;
+              setPremiumContent(p => ({ ...p, keyPoints: updated }));
+            }} placeholder={`핵심 포인트 ${i + 1}`}
+              className="flex-1 bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 outline-none focus:ring-2 focus:ring-yellow-500"
+            />
+            {premiumContent.keyPoints.length > 1 && (
+              <button onClick={() => setPremiumContent(p => ({
+                ...p, keyPoints: p.keyPoints.filter((_, idx) => idx !== i)
+              }))} className="text-gray-500 hover:text-red-400 px-2">×</button>
+            )}
+          </div>
+        ))}
+        <button onClick={() => setPremiumContent(p => ({ ...p, keyPoints: [...p.keyPoints, ''] }))}
+          className="text-xs text-yellow-400 hover:text-yellow-300 transition">+ 포인트 추가</button>
+      </div>
+
+      <div>
+        <label className="text-xs text-gray-500 mb-1 block">에디터 코멘트</label>
+        <textarea value={premiumContent.editorComment}
+          onChange={(e) => setPremiumContent(p => ({ ...p, editorComment: e.target.value }))}
+          placeholder="구독자에게 전하는 에디터의 한마디..." rows={2}
+          className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 outline-none focus:ring-2 focus:ring-yellow-500 resize-none"
+        />
+      </div>
+
+      <div>
+        <label className="text-xs text-gray-500 mb-2 block">추천 링크</label>
+        {premiumContent.relatedLinks.map((link, i) => (
+          <div key={i} className="flex gap-2 mb-2">
+            <input value={link.title} onChange={(e) => {
+              const updated = [...premiumContent.relatedLinks];
+              updated[i] = { ...updated[i], title: e.target.value };
+              setPremiumContent(p => ({ ...p, relatedLinks: updated }));
+            }} placeholder="링크 제목" className="flex-1 bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 outline-none focus:ring-2 focus:ring-yellow-500" />
+            <input value={link.url} onChange={(e) => {
+              const updated = [...premiumContent.relatedLinks];
+              updated[i] = { ...updated[i], url: e.target.value };
+              setPremiumContent(p => ({ ...p, relatedLinks: updated }));
+            }} placeholder="https://" className="flex-1 bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 outline-none focus:ring-2 focus:ring-yellow-500" />
+            {premiumContent.relatedLinks.length > 1 && (
+              <button onClick={() => setPremiumContent(p => ({
+                ...p, relatedLinks: p.relatedLinks.filter((_, idx) => idx !== i)
+              }))} className="text-gray-500 hover:text-red-400 px-2">×</button>
+            )}
+          </div>
+        ))}
+        <button onClick={() => setPremiumContent(p => ({ ...p, relatedLinks: [...p.relatedLinks, { title: '', url: '' }] }))}
+          className="text-xs text-yellow-400 hover:text-yellow-300 transition">+ 링크 추가</button>
+      </div>
+    </div>
+  );
 
   return (
     <div className="min-h-screen transition-colors duration-200 pb-10">
@@ -367,10 +637,14 @@ export default function AdminNewsCreatePage() {
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition ${
               showAiPanel ? 'bg-purple-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'
             }`}>
-            ✨ AI 보조
+            AI 보조
           </button>
 
           <div className="flex gap-2">
+            <button onClick={() => { refreshDrafts(); setShowDraftManager((v) => !v); }} disabled={loading}
+              className="text-sm px-3 py-1.5 border border-gray-700 rounded-lg text-gray-400 hover:text-white transition">
+              임시글
+            </button>
             <button onClick={() => router.push('/admin/news')} disabled={loading}
               className="text-sm px-3 py-1.5 border border-gray-700 rounded-lg text-gray-400 hover:text-white transition">
               목록으로
@@ -392,6 +666,38 @@ export default function AdminNewsCreatePage() {
         {/* 메인 에디터 */}
         <main className={`flex flex-col gap-5 ${showAiPanel ? 'flex-1 min-w-0' : 'w-full max-w-3xl'}`}>
           {error && <div className="p-3 bg-red-900 text-red-300 rounded-lg text-sm">{error}</div>}
+
+          {showDraftManager && (
+            <section className="bg-gray-800 border border-gray-700 rounded-xl p-4">
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <h3 className="text-sm font-bold text-white">임시저장 글</h3>
+                  <p className="text-xs text-gray-500 mt-0.5">저장된 초안을 불러오거나 삭제할 수 있습니다.</p>
+                </div>
+                <button onClick={() => setShowDraftManager(false)} className="text-xs text-gray-500 hover:text-white">닫기</button>
+              </div>
+              {drafts.length ? (
+                <div className="flex flex-col gap-2">
+                  {drafts.map((draft) => (
+                    <div key={draft.key} className="flex items-center justify-between gap-3 rounded-lg bg-gray-900 border border-gray-700 p-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm text-gray-200">{draft.title}</p>
+                        <p className="text-xs text-gray-500 mt-0.5">{new Date(draft.savedAt).toLocaleString('ko-KR')}</p>
+                      </div>
+                      <div className="flex shrink-0 gap-2">
+                        <button onClick={() => loadDraft(draft.key)} className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs text-white hover:bg-blue-700 transition">편집</button>
+                        <button onClick={() => deleteDraft(draft.key)} className="rounded-lg bg-gray-700 px-3 py-1.5 text-xs text-gray-300 hover:bg-red-900 hover:text-red-200 transition">삭제</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded-lg border border-dashed border-gray-700 bg-gray-900 p-6 text-center text-sm text-gray-500">
+                  저장된 임시글이 없습니다.
+                </div>
+              )}
+            </section>
+          )}
 
           {/* 제목 */}
           <div>
@@ -415,7 +721,9 @@ export default function AdminNewsCreatePage() {
           </div>
 
           {/* 카테고리 + 상태 */}
-          <div className="grid grid-cols-2 gap-3">
+          {premiumContentSection}
+
+          <div className="order-[3] grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs text-gray-500 mb-1 block">카테고리</label>
               <select value={form.categoryId} onChange={(e) => setForm({ ...form, categoryId: e.target.value })}
@@ -438,7 +746,7 @@ export default function AdminNewsCreatePage() {
           </div>
 
           {form.status === 'scheduled' && (
-            <div>
+            <div className="order-[4]">
               <label className="text-xs text-gray-500 mb-1 block">예약 발행 시간</label>
               <input type="datetime-local" value={form.scheduledAt}
                 onChange={(e) => setForm({ ...form, scheduledAt: e.target.value })}
@@ -448,7 +756,7 @@ export default function AdminNewsCreatePage() {
           )}
 
           {/* 썸네일 */}
-          <div>
+          <div className="order-[5]">
             <label className="text-xs text-gray-500 mb-1 block">썸네일</label>
             {form.thumbnailUrl && (
               <div className="relative mb-2 w-full h-40 rounded-lg overflow-hidden bg-gray-800">
@@ -472,7 +780,7 @@ export default function AdminNewsCreatePage() {
           </div>
 
           {/* 태그 */}
-          <div>
+          <div className="order-[6]">
             <label className="text-xs text-gray-500 mb-1 block">태그</label>
             <div className="flex gap-2 mb-2 flex-wrap">
               {form.tags.map(tag => (
@@ -493,11 +801,99 @@ export default function AdminNewsCreatePage() {
           </div>
 
           {/* SEO */}
-          <div className="bg-gray-800 border border-gray-700 rounded-xl p-4 flex flex-col gap-3">
+          <div className="order-[9] bg-gray-800 border border-gray-700 rounded-xl p-4 flex flex-col gap-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider">SEO 설정</div>
+                <p className="mt-1 text-xs text-gray-500">검색 결과에 잘 보이도록 제목, 설명, 주소, 본문 구조를 점검합니다.</p>
+              </div>
+              <div className="flex flex-col items-end gap-1">
+                {aiSeoResult && <span className="text-xs text-purple-400">AI 분석 반영</span>}
+                <div className="flex items-center gap-2">
+                  <div className="w-24 bg-gray-700 rounded-full h-1.5 overflow-hidden">
+                    <div className={`h-1.5 rounded-full transition-all ${displayedSeoBarColor}`} style={{ width: `${displayedSeoScore}%` }} />
+                  </div>
+                  <span className={`text-xs font-bold ${displayedSeoColor}`}>{displayedSeoScore}점</span>
+                </div>
+                <span className={`text-[11px] ${displayedSeoColor}`}>{seoStatusLabel}</span>
+              </div>
+            </div>
+
+            <div className="bg-gray-900 border border-gray-700 rounded-lg p-3">
+              <div className="text-[11px] text-gray-500 mb-2">검색 결과 미리보기</div>
+              <p className="text-sm text-blue-400 line-clamp-1">{form.title || '검색 결과에 표시될 제목'}</p>
+              <p className="text-[11px] text-emerald-500 mt-1 line-clamp-1">minime.local/news/{form.slug || 'url-slug'}</p>
+              <p className="text-xs text-gray-400 mt-1 line-clamp-2">{metaPreview || '메타 설명을 입력하면 검색 결과 설명처럼 보입니다.'}</p>
+            </div>
+
+            {[
+              { title: '필수 항목', items: seoReport.required },
+              { title: '권장 항목', items: seoReport.recommended },
+            ].map((group) => (
+              <div key={group.title}>
+                <div className="mb-2 flex items-center justify-between">
+                  <span className="text-xs font-medium text-gray-400">{group.title}</span>
+                  <span className="text-[11px] text-gray-500">{group.items.filter((item) => item.ok).length}/{group.items.length}</span>
+                </div>
+                <div className="flex flex-col gap-2">
+                  {group.items.map((item) => (
+                    <div key={item.label} className="rounded-lg border border-gray-700 bg-gray-900/70 p-2.5">
+                      <div className="flex items-start gap-2">
+                        <span className={`mt-0.5 flex h-4 w-4 items-center justify-center rounded-full text-[10px] ${item.ok ? 'bg-emerald-500/20 text-emerald-400' : 'bg-yellow-500/20 text-yellow-400'}`}>
+                          {item.ok ? '✓' : '!'}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-xs text-gray-200">{item.label}</span>
+                            <span className="shrink-0 text-[11px] text-gray-500">{item.value}</span>
+                          </div>
+                          {!item.ok && <p className="mt-1 text-[11px] leading-relaxed text-gray-500">{item.suggestion}</p>}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+
+            <div className="flex flex-wrap gap-2">
+              {!form.slug && form.title && (
+                <button onClick={() => setForm((f) => ({ ...f, slug: generateSlug(f.title) }))}
+                  className="rounded-lg bg-gray-700 px-3 py-1.5 text-xs text-gray-200 hover:bg-gray-600 transition">
+                  제목으로 URL 만들기
+                </button>
+              )}
+              {!form.metaDescription && (form.lead || form.content) && (
+                <button onClick={() => setForm((f) => ({ ...f, metaDescription: (f.lead || f.content.replace(/<[^>]*>/g, '')).slice(0, 155) }))}
+                  className="rounded-lg bg-gray-700 px-3 py-1.5 text-xs text-gray-200 hover:bg-gray-600 transition">
+                  설명 자동 채우기
+                </button>
+              )}
+            </div>
+
+            {aiSeoResult?.keywords.length ? (
+              <div>
+                <div className="text-xs text-gray-500 mb-1">AI 핵심 키워드</div>
+                <div className="flex gap-1 flex-wrap">
+                  {aiSeoResult.keywords.map((kw, i) => (
+                    <span key={i} className="text-xs px-2 py-0.5 bg-purple-500/20 text-purple-300 rounded-full">{kw}</span>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            {aiSeoResult?.readabilityNote && (
+              <div className="bg-gray-900 rounded-lg p-2">
+                <p className="text-xs text-gray-400">{aiSeoResult.readabilityNote}</p>
+              </div>
+            )}
+          </div>
+
+          <div className="hidden">
             <div className="flex items-center justify-between">
               <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider">SEO 설정</div>
               <div className="flex items-center gap-2">
-                {aiSeoResult && <span className="text-xs text-purple-400">✨ AI 분석</span>}
+                {aiSeoResult && <span className="text-xs text-purple-400">AI 분석 반영</span>}
                 <div className="w-24 bg-gray-700 rounded-full h-1.5">
                   <div className={`h-1.5 rounded-full transition-all ${seoBarColor}`} style={{ width: `${seoScore}%` }} />
                 </div>
@@ -537,7 +933,7 @@ export default function AdminNewsCreatePage() {
             {/* 가독성 메모 */}
             {aiSeoResult?.readabilityNote && (
               <div className="bg-gray-900 rounded-lg p-2">
-                <p className="text-xs text-gray-400">💡 {aiSeoResult.readabilityNote}</p>
+                <p className="text-xs text-gray-400">{aiSeoResult.readabilityNote}</p>
               </div>
             )}
 
@@ -558,7 +954,7 @@ export default function AdminNewsCreatePage() {
           </div>
 
           {/* 본문 */}
-          <div>
+          <div className="order-[7]">
             <div className="flex items-center justify-between mb-2">
               <label className="text-xs text-gray-500">본문 ({form.content.replace(/<[^>]*>/g, '').length}자)</label>
             </div>
@@ -566,7 +962,7 @@ export default function AdminNewsCreatePage() {
           </div>
 
           {/* 구독자 전용 콘텐츠 */}
-          <div className="bg-gray-800 border border-yellow-600/30 rounded-xl p-4 flex flex-col gap-4">
+          <div className="hidden">
             <div className="flex items-center gap-2">
               <span className="text-xs px-2 py-0.5 bg-yellow-500/20 text-yellow-400 rounded-full font-medium">구독자 전용</span>
               <span className="text-xs text-gray-500">뉴스레터에만 포함되는 추가 콘텐츠</span>
@@ -642,7 +1038,7 @@ export default function AdminNewsCreatePage() {
           </div>
 
           {/* 뉴스레터 발송 옵션 */}
-          <div className={`rounded-xl border p-4 flex flex-col gap-4 transition ${
+          <div className={`order-[10] rounded-xl border p-4 flex flex-col gap-4 transition ${
             newsletterOption.enabled ? 'bg-blue-600/10 border-blue-600/30' : 'bg-gray-800 border-gray-700'
           }`}>
             <div className="flex justify-between items-center">
@@ -733,7 +1129,7 @@ export default function AdminNewsCreatePage() {
               {/* 헤더 */}
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <span className="text-sm font-bold text-white">✨ AI 작성 보조</span>
+                  <span className="text-sm font-bold text-white">AI 작성 보조</span>
                 </div>
                 <button onClick={handleAiAnalyze} disabled={!!aiLoading}
                   className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white rounded-lg text-xs font-bold transition flex items-center gap-1">
@@ -893,7 +1289,7 @@ export default function AdminNewsCreatePage() {
                   {/* 제목 추천 */}
                   {aiGeneratedContents.titles.length > 0 && (
                     <div className="border-t border-gray-800 pt-4">
-                      <div className="text-xs font-medium text-gray-400 mb-2">📌 제목 추천</div>
+                      <div className="text-xs font-medium text-gray-400 mb-2">제목 추천</div>
                       <div className="flex flex-col gap-2">
                         {aiGeneratedContents.titles.map((title, i) => (
                           <div key={i} className="bg-gray-800 rounded-lg p-2.5 flex justify-between items-start gap-2">
@@ -911,7 +1307,7 @@ export default function AdminNewsCreatePage() {
                   {/* 리드문 */}
                   {aiGeneratedContents.lead && (
                     <div className="border-t border-gray-800 pt-4">
-                      <div className="text-xs font-medium text-gray-400 mb-2">📝 리드문 추천</div>
+                      <div className="text-xs font-medium text-gray-400 mb-2">리드문 추천</div>
                       <div className="bg-gray-800 rounded-lg p-2.5 flex justify-between items-start gap-2">
                         <p className="text-xs text-gray-300 flex-1 leading-relaxed">{aiGeneratedContents.lead}</p>
                         <button onClick={() => setForm(f => ({ ...f, lead: aiGeneratedContents.lead }))}
@@ -926,7 +1322,7 @@ export default function AdminNewsCreatePage() {
                   {aiGeneratedContents.tags.length > 0 && (
                     <div className="border-t border-gray-800 pt-4">
                       <div className="flex items-center justify-between mb-2">
-                        <div className="text-xs font-medium text-gray-400">🏷️ 태그 추천</div>
+                        <div className="text-xs font-medium text-gray-400">태그 추천</div>
                         <button onClick={() => {
                           const newTags = aiGeneratedContents.tags.filter(t => !form.tags.includes(t));
                           setForm(f => ({ ...f, tags: [...f.tags, ...newTags] }));
@@ -951,7 +1347,7 @@ export default function AdminNewsCreatePage() {
                   {/* 메타 설명 */}
                   {aiGeneratedContents.meta && (
                     <div className="border-t border-gray-800 pt-4">
-                      <div className="text-xs font-medium text-gray-400 mb-2">🔍 메타 설명 추천</div>
+                      <div className="text-xs font-medium text-gray-400 mb-2">메타 설명 추천</div>
                       <div className="bg-gray-800 rounded-lg p-2.5 flex justify-between items-start gap-2">
                         <p className="text-xs text-gray-300 flex-1 leading-relaxed">{aiGeneratedContents.meta}</p>
                         <button onClick={() => setForm(f => ({ ...f, metaDescription: aiGeneratedContents.meta }))}
@@ -966,7 +1362,7 @@ export default function AdminNewsCreatePage() {
                   {aiGeneratedContents.keyPoints.length > 0 && (
                     <div className="border-t border-gray-800 pt-4">
                       <div className="flex items-center justify-between mb-2">
-                        <div className="text-xs font-medium text-gray-400">⭐ 핵심 포인트</div>
+                        <div className="text-xs font-medium text-gray-400">핵심 포인트</div>
                         <button onClick={() => setPremiumContent(p => ({ ...p, keyPoints: aiGeneratedContents.keyPoints }))}
                           className="text-xs text-blue-400 hover:text-blue-300 transition">적용</button>
                       </div>
@@ -984,7 +1380,7 @@ export default function AdminNewsCreatePage() {
                   {/* 뉴스레터 요약 */}
                   {aiGeneratedContents.newsletterSummary && (
                     <div className="border-t border-gray-800 pt-4">
-                      <div className="text-xs font-medium text-gray-400 mb-2">📧 뉴스레터 요약</div>
+                      <div className="text-xs font-medium text-gray-400 mb-2">뉴스레터 요약</div>
                       <div className="bg-gray-800 rounded-lg p-2.5 flex justify-between items-start gap-2">
                         <p className="text-xs text-gray-300 flex-1 leading-relaxed">{aiGeneratedContents.newsletterSummary}</p>
                         <button onClick={() => setForm(f => ({ ...f, lead: aiGeneratedContents.newsletterSummary }))}
@@ -998,7 +1394,7 @@ export default function AdminNewsCreatePage() {
                   {/* 문체 분석 */}
                   {aiGeneratedContents.styleNote && (
                     <div className="border-t border-gray-800 pt-4">
-                      <div className="text-xs font-medium text-gray-400 mb-2">✍️ 문체 분석</div>
+                      <div className="text-xs font-medium text-gray-400 mb-2">문체 분석</div>
                       <div className="bg-gray-800 rounded-lg p-2.5">
                         <p className="text-xs text-gray-400 leading-relaxed">{aiGeneratedContents.styleNote}</p>
                       </div>
@@ -1059,7 +1455,7 @@ export default function AdminNewsCreatePage() {
                 />
                 {premiumContent.keyPoints.some(p => p.trim()) && (
                   <div className="bg-yellow-50 rounded-xl p-4 mb-4">
-                    <div className="text-xs font-bold text-yellow-700 mb-2">✨ 핵심 포인트 (구독자 전용)</div>
+                    <div className="text-xs font-bold text-yellow-700 mb-2">핵심 포인트 (구독자 전용)</div>
                     {premiumContent.keyPoints.filter(p => p.trim()).map((point, i) => (
                       <div key={i} className="flex gap-2 text-sm text-gray-700 mb-1">
                         <span className="text-yellow-500 font-bold">{i + 1}.</span>
