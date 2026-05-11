@@ -68,6 +68,9 @@ export class Subscription {
   @Column({ type: 'varchar', nullable: true })
   dailySendTime!: string | null;
 
+  @Column({ type: 'text', nullable: true })
+  adminMemo!: string | null;
+
   @CreateDateColumn()
   createdAt!: Date;
 

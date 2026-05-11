@@ -2,12 +2,15 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Like } from './entities/like.entity';
+import { News } from '../news/news.entity';
 
 @Injectable()
 export class LikesService {
   constructor(
     @InjectRepository(Like)
     private likeRepository: Repository<Like>,
+    @InjectRepository(News)
+    private newsRepository: Repository<News>,
   ) {}
 
   async toggle(userId: number, newsId: number) {
@@ -16,11 +19,19 @@ export class LikesService {
     });
     if (existing) {
       await this.likeRepository.remove(existing);
-      return { liked: false };
+      await this.newsRepository.decrement({ id: newsId }, 'likeCount', 1);
+      const news = await this.newsRepository.findOne({ where: { id: newsId } });
+      if (news && news.likeCount < 0) {
+        news.likeCount = 0;
+        await this.newsRepository.save(news);
+      }
+      return { liked: false, likeCount: Math.max(news?.likeCount ?? 0, 0) };
     }
     const like = this.likeRepository.create({ userId, newsId });
     await this.likeRepository.save(like);
-    return { liked: true };
+    await this.newsRepository.increment({ id: newsId }, 'likeCount', 1);
+    const news = await this.newsRepository.findOne({ where: { id: newsId } });
+    return { liked: true, likeCount: news?.likeCount ?? 0 };
   }
 
   async count(newsId: number) {

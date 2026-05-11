@@ -2,7 +2,7 @@ import {
   Controller, Get, Post, Put, Delete,
   Param, Body, Query, UseGuards, Request, Headers,
 } from '@nestjs/common';
-import { NewsService } from './news.service';
+import { NewsService, RewriteSelectionDto } from './news.service';
 import { CreateNewsDto } from './dto/create-news.dto';
 import { UpdateNewsDto } from './dto/update-news.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -17,14 +17,27 @@ export class NewsController {
     @Query('limit') limit: string,
     @Query('categoryId') categoryId: string,
     @Query('status') status: string,
+    @Query('search') search: string,
+    @Query('tag') tag: string,
   ) {
-    return this.newsService.findAll(+page || 1, +limit || 10, categoryId ? +categoryId : undefined, status);
+    return this.newsService.findAll(+page || 1, +limit || 10, categoryId ? +categoryId : undefined, status, search, tag);
+  }
+
+  @Get('home')
+  getHomeFeed() {
+    return this.newsService.getHomeFeed();
   }
 
   @Get('admin')
   @UseGuards(JwtAuthGuard)
   findAllAdmin(@Query('page') page: string, @Query('limit') limit: string) {
     return this.newsService.findAllAdmin(+page || 1, +limit || 20);
+  }
+
+  @Get('me/view-history')
+  @UseGuards(JwtAuthGuard)
+  getMyViewHistory(@Request() req: any) {
+    return this.newsService.getMyViewHistory(req.user.id);
   }
 
   @Get('slug/:slug')
@@ -53,12 +66,41 @@ export class NewsController {
     return this.newsService.analyzeNews(dto);
   }
 
+  @Post('ai/spellcheck')
+  @UseGuards(JwtAuthGuard)
+  spellcheckWithAi(@Body() dto: { text?: string }) {
+    return this.newsService.spellcheckText(dto);
+  }
+
+  @Post('ai/rewrite-selection')
+  @UseGuards(JwtAuthGuard)
+  rewriteSelectionWithAi(@Body() dto: { text?: string; mode?: string; references?: RewriteSelectionDto['references'] }) {
+    return this.newsService.rewriteSelection(dto);
+  }
+
+  @Post('ai/translate-selection')
+  @UseGuards(JwtAuthGuard)
+  translateSelectionWithAi(@Body() dto: { text?: string; targetLanguage?: string }) {
+    return this.newsService.translateSelection(dto);
+  }
+
   @Get(':id')
   async findOne(@Param('id') id: string, @Headers('x-view-token') viewToken: string) {
     if (viewToken) {
       await this.newsService.incrementViewCount(+id);
     }
     return this.newsService.findOne(+id);
+  }
+
+  @Post(':id/view-history')
+  @UseGuards(JwtAuthGuard)
+  recordViewHistory(@Param('id') id: string, @Request() req: any) {
+    return this.newsService.recordViewHistory(req.user.id, +id);
+  }
+
+  @Post(':id/share')
+  recordShare(@Param('id') id: string) {
+    return this.newsService.incrementShareCount(+id);
   }
 
   @Post()

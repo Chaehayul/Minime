@@ -96,7 +96,7 @@ const formatDate = (dateStr: string | null) => {
   return `${d.getFullYear()}년 ${d.getMonth() + 1}월 ${d.getDate()}일`;
 };
 
-function AdminShortcutIcon({ type }: { type: 'write' | 'manage' | 'stats' }) {
+function AdminShortcutIcon({ type }: { type: 'write' | 'manage' | 'stats' | 'subscribers' }) {
   const commonProps = {
     width: 22,
     height: 22,
@@ -126,6 +126,17 @@ function AdminShortcutIcon({ type }: { type: 'write' | 'manage' | 'stats' }) {
         <path d="M3 6h.01" />
         <path d="M3 12h.01" />
         <path d="M3 18h.01" />
+      </svg>
+    );
+  }
+
+  if (type === 'subscribers') {
+    return (
+      <svg {...commonProps}>
+        <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+        <circle cx="9" cy="7" r="4" />
+        <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+        <path d="M16 3.13a4 4 0 0 1 0 7.75" />
       </svg>
     );
   }
@@ -443,10 +454,7 @@ export default function MyPage() {
         <section className="bg-white dark:bg-[#1E1E1E] rounded-2xl border border-gray-100 dark:border-[#2E2E2E] overflow-hidden">
           <div className="p-5">
             <div className="flex items-center gap-3">
-              <div className="w-14 h-14 rounded-2xl bg-gray-900 dark:bg-white flex items-center justify-center
-                              text-white dark:text-gray-900 text-xl font-bold flex-shrink-0">
-                {user?.nickname?.[0]?.toUpperCase()}
-              </div>
+              <ProfileAvatar nickname={user?.nickname} size="lg" />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="font-semibold text-base text-gray-900 dark:text-white truncate">
@@ -533,11 +541,12 @@ export default function MyPage() {
           <section className="bg-blue-50 dark:bg-[#1E2530] rounded-2xl border border-blue-100
                                dark:border-blue-900/40 p-4">
             <p className="text-[11px] font-semibold text-blue-500 dark:text-blue-400 mb-3">관리자</p>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               {[
                 { href: '/admin/news/create', icon: 'write' as const, label: '뉴스 작성' },
                 { href: '/admin/news',        icon: 'manage' as const, label: '뉴스 관리' },
                 { href: '/admin/stats',       icon: 'stats' as const, label: '통계 분석' },
+                { href: '/admin/subscribers', icon: 'subscribers' as const, label: '구독자 관리' },
               ].map(({ href, icon, label }) => (
                 <Link
                   key={href}
