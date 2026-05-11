@@ -54,7 +54,7 @@ export default function PlansPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white pb-32">
+    <div className="min-h-screen bg-gray-950 text-white pb-40">
       <header className="sticky top-0 z-50 bg-gray-950 border-b border-gray-800">
         <div className="max-w-3xl mx-auto px-4 h-14 flex items-center gap-3">
           <Link href="/mypage">
@@ -130,7 +130,7 @@ export default function PlansPage() {
         })}
       </div>
 
-      <div className="fixed bottom-0 left-0 right-0 bg-gray-950 border-t border-gray-800 px-4 py-4">
+      <div className="fixed bottom-16 left-0 right-0 bg-gray-950 border-t border-gray-800 px-4 py-3">
         <div className="max-w-3xl mx-auto">
           <button onClick={handleNext} disabled={!selected}
             className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 disabled:text-gray-500 text-white rounded-xl py-3.5 text-sm font-bold transition">
