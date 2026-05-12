@@ -30,8 +30,19 @@ export class NewsController {
 
   @Get('admin')
   @UseGuards(JwtAuthGuard)
-  findAllAdmin(@Query('page') page: string, @Query('limit') limit: string) {
-    return this.newsService.findAllAdmin(+page || 1, +limit || 20);
+  findAllAdmin(
+    @Query('page') page: string,
+    @Query('limit') limit: string,
+    @Query('status') status: string,
+    @Query('mine') mine: string,
+    @Request() req: any,
+  ) {
+    return this.newsService.findAllAdmin(
+      +page || 1,
+      +limit || 20,
+      status,
+      mine === 'true' ? req.user.id : undefined,
+    );
   }
 
   @Get('me/view-history')

@@ -49,14 +49,14 @@ export default function BottomNav() {
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-gray-200 bg-white pb-[env(safe-area-inset-bottom)] shadow-[0_-1px_0_rgba(0,0,0,0.03)] dark:border-[#2e2e2e] dark:bg-[#0b0b0b] dark:shadow-none">
-      <div className="mx-auto flex max-w-[1200px] items-center justify-around px-4 py-3">
+      <div className="mx-auto flex max-w-[1200px] items-center justify-around px-4 py-2">
         {items.map((item) => {
           const active = pathname === item.href;
           return (
             <Link
               key={item.href}
               href={item.href}
-              className={`flex flex-col items-center gap-1 py-3 transition ${
+              className={`flex flex-col items-center gap-1 py-2 transition ${
                 active
                   ? 'text-blue-600 dark:text-blue-500'
                   : 'text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200'

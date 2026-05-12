@@ -25,6 +25,8 @@ interface DraftSummary {
   key: string;
   title: string;
   savedAt: string;
+  source: 'local' | 'server';
+  id?: number;
 }
 
 interface SourceReference {
@@ -215,6 +217,7 @@ export default function AdminNewsCreatePage() {
   const [showPreview, setShowPreview] = useState(false);
   const [previewMode, setPreviewMode] = useState<'pc' | 'mobile'>('pc');
   const thumbnailRef = useRef<HTMLInputElement>(null);
+  const metaDescriptionRef = useRef<HTMLTextAreaElement>(null);
 
   // 자동 임시저장
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
@@ -223,6 +226,7 @@ export default function AdminNewsCreatePage() {
   const [draftKey, setDraftKey] = useState(getDraftKey());
   const [draftKeyReady, setDraftKeyReady] = useState(false);
   const [drafts, setDrafts] = useState<DraftSummary[]>([]);
+  const [serverDraftId, setServerDraftId] = useState<number | null>(null);
   const [showDraftManager, setShowDraftManager] = useState(false);
   const skipDirtyCheckRef = useRef(false);
 
@@ -272,10 +276,43 @@ export default function AdminNewsCreatePage() {
           key,
           title: parsed.form.title || '제목 없는 초안',
           savedAt: parsed.savedAt || new Date().toISOString(),
+          source: 'local',
         });
       } catch {}
     }
     setDrafts(summaries.sort((a, b) => new Date(b.savedAt).getTime() - new Date(a.savedAt).getTime()));
+  }, []);
+
+  const refreshAllDrafts = useCallback(async () => {
+    const localSummaries: DraftSummary[] = [];
+    for (let i = 0; i < localStorage.length; i += 1) {
+      const key = localStorage.key(i);
+      if (!key || (!key.startsWith(DRAFT_KEY_PREFIX) && key !== LEGACY_DRAFT_KEY)) continue;
+      try {
+        const parsed = JSON.parse(localStorage.getItem(key) || '{}');
+        if (!parsed.form) continue;
+        localSummaries.push({
+          key,
+          title: parsed.form.title || '제목 없는 초안',
+          savedAt: parsed.savedAt || new Date().toISOString(),
+          source: 'local',
+        });
+      } catch {}
+    }
+
+    try {
+      const res = await api.get('/news/admin?status=draft&mine=true&limit=50');
+      const serverDrafts = (res.data.news || []).map((news: any) => ({
+        key: `server:${news.id}`,
+        id: news.id,
+        title: news.title || '제목 없는 임시글',
+        savedAt: news.updatedAt || news.createdAt || new Date().toISOString(),
+        source: 'server' as const,
+      }));
+      setDrafts([...serverDrafts, ...localSummaries].sort((a, b) => new Date(b.savedAt).getTime() - new Date(a.savedAt).getTime()));
+    } catch {
+      setDrafts(localSummaries.sort((a, b) => new Date(b.savedAt).getTime() - new Date(a.savedAt).getTime()));
+    }
   }, []);
 
   const saveDraft = useCallback((key = draftKey) => {
@@ -286,6 +323,7 @@ export default function AdminNewsCreatePage() {
       premiumContent,
       sourceReferences,
       newsletterOption,
+      serverDraftId,
       savedAt: new Date().toISOString(),
     }));
     if (key !== LEGACY_DRAFT_KEY) localStorage.removeItem(LEGACY_DRAFT_KEY);
@@ -293,9 +331,38 @@ export default function AdminNewsCreatePage() {
     setHasUnsaved(false);
     refreshDrafts();
     return true;
-  }, [draftKey, form, premiumContent, sourceReferences, newsletterOption, refreshDrafts]);
+  }, [draftKey, form, premiumContent, sourceReferences, newsletterOption, serverDraftId, refreshDrafts]);
 
-  const loadDraft = (key: string) => {
+  const loadDraft = async (draft: DraftSummary) => {
+    if (draft.source === 'server' && draft.id) {
+      if (hasUnsaved && form.title && !confirm('현재 작성 중인 내용이 있어요. 선택한 서버 임시글을 불러올까요?')) return;
+      try {
+        const { data: news } = await api.get(`/news/${draft.id}`);
+        skipDirtyCheckRef.current = true;
+        setForm({
+          title: news.title || '',
+          content: news.content || '',
+          categoryId: news.categoryId ? String(news.categoryId) : '',
+          status: news.status || 'draft',
+          thumbnailUrl: news.thumbnailUrl || '',
+          lead: news.lead || '',
+          metaDescription: news.metaDescription || '',
+          slug: news.slug || '',
+          tags: Array.isArray(news.tags) ? news.tags.map((tag: { name?: string }) => tag.name).filter(Boolean) : [],
+          scheduledAt: news.scheduledAt || '',
+        });
+        setSourceReferences(news.sourceReferences?.length ? news.sourceReferences : [{ title: '', url: '', source: '', type: 'news', memo: '' }]);
+        setServerDraftId(news.id);
+        setLastSaved(news.updatedAt ? new Date(news.updatedAt) : null);
+        setHasUnsaved(false);
+        setShowDraftManager(false);
+      } catch {
+        alert('서버 임시글을 불러오지 못했습니다.');
+      }
+      return;
+    }
+
+    const key = draft.key;
     const raw = localStorage.getItem(key);
     if (!raw) return;
     if (hasUnsaved && form.title && !confirm('현재 작성 중인 내용이 있어요. 선택한 초안을 불러올까요?')) return;
@@ -308,16 +375,27 @@ export default function AdminNewsCreatePage() {
       if (parsed.sourceReferences) setSourceReferences(parsed.sourceReferences);
       if (parsed.newsletterOption) setNewsletterOption(parsed.newsletterOption);
       setDraftKey(key);
+      setServerDraftId(parsed.serverDraftId ?? null);
       setLastSaved(parsed.savedAt ? new Date(parsed.savedAt) : null);
       setHasUnsaved(false);
       setShowDraftManager(false);
     } catch {}
   };
 
-  const deleteDraft = (key: string) => {
+  const deleteDraft = async (draft: DraftSummary) => {
     if (!confirm('이 임시저장 초안을 삭제할까요?')) return;
-    localStorage.removeItem(key);
-    refreshDrafts();
+    if (draft.source === 'server' && draft.id) {
+      try {
+        await api.delete(`/news/${draft.id}`);
+        if (serverDraftId === draft.id) setServerDraftId(null);
+        await refreshAllDrafts();
+      } catch {
+        alert('서버 임시글 삭제에 실패했습니다.');
+      }
+      return;
+    }
+    localStorage.removeItem(draft.key);
+    await refreshAllDrafts();
   };
 
   useEffect(() => {
@@ -325,8 +403,8 @@ export default function AdminNewsCreatePage() {
       .then((res) => setDraftKey(getDraftKey(res.data?.id)))
       .catch(() => setDraftKey(getDraftKey()))
       .finally(() => setDraftKeyReady(true));
-    refreshDrafts();
-  }, [refreshDrafts]);
+    refreshAllDrafts();
+  }, [refreshAllDrafts]);
 
   useEffect(() => {
     if (!draftKeyReady) return;
@@ -342,6 +420,7 @@ export default function AdminNewsCreatePage() {
           if (parsed.premiumContent) setPremiumContent(parsed.premiumContent);
           if (parsed.sourceReferences) setSourceReferences(parsed.sourceReferences);
           if (parsed.newsletterOption) setNewsletterOption(parsed.newsletterOption);
+          setServerDraftId(parsed.serverDraftId ?? null);
           setLastSaved(parsed.savedAt ? new Date(parsed.savedAt) : null);
           setHasUnsaved(false);
         }
@@ -420,25 +499,68 @@ export default function AdminNewsCreatePage() {
   };
   const removeTag = (tag: string) => setForm(f => ({ ...f, tags: f.tags.filter(t => t !== tag) }));
 
-  const handleManualSave = () => {
-    saveDraft();
-    alert('임시저장 되었습니다.');
+  const getDraftPayload = () => ({
+    ...form,
+    title: form.title.trim() || '제목 없는 임시글',
+    content: form.content.trim() || '<p></p>',
+    status: 'draft',
+    categoryId: form.categoryId ? +form.categoryId : null,
+    sourceReferences: sourceReferences.filter((source) => source.title.trim() || source.url.trim() || source.memo.trim()),
+  });
+
+  const handleManualSave = async () => {
+    if (!form.title.trim() && !form.content.trim() && !form.lead.trim()) {
+      alert('임시저장할 제목이나 내용을 입력해주세요.');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+    try {
+      const payload = getDraftPayload();
+      const res = serverDraftId
+        ? await api.put(`/news/${serverDraftId}`, payload)
+        : await api.post('/news', payload);
+      setServerDraftId(res.data.id);
+      localStorage.removeItem(draftKey);
+      localStorage.removeItem(LEGACY_DRAFT_KEY);
+      setLastSaved(new Date());
+      setHasUnsaved(false);
+      await refreshAllDrafts();
+      alert('서버에 임시저장 되었습니다. 로그아웃 후 다시 로그인해도 임시글에서 불러올 수 있어요.');
+    } catch (err: any) {
+      saveDraft();
+      setError(err.response?.data?.message || '서버 임시저장에 실패해서 이 브라우저에만 임시저장했습니다.');
+      alert('서버 임시저장에 실패해서 이 브라우저에만 임시저장했습니다.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleSubmit = async (status: string) => {
-    if (!form.title.trim()) { setError('제목을 입력해주세요.'); return; }
-    if (!form.content.trim()) { setError('내용을 입력해주세요.'); return; }
+    if (status !== 'draft' && !form.title.trim()) { setError('제목을 입력해주세요.'); return; }
+    if (status !== 'draft' && !form.content.trim()) { setError('내용을 입력해주세요.'); return; }
+    if (status === 'draft' && !form.title.trim() && !form.content.trim() && !form.lead.trim()) {
+      setError('임시저장할 제목이나 내용을 입력해주세요.');
+      return;
+    }
     if (newsletterOption.enabled && newsletterOption.isScheduled && !newsletterOption.scheduledAt) {
       setError('뉴스레터 예약 발송 시간을 입력해주세요.'); return;
     }
     setLoading(true); setError('');
     try {
-      const res = await api.post('/news', {
+      const payload = {
         ...form,
+        title: status === 'draft' ? (form.title.trim() || '제목 없는 임시글') : form.title,
+        content: status === 'draft' ? (form.content.trim() || '<p></p>') : form.content,
         sourceReferences: sourceReferences.filter((source) => source.title.trim() || source.url.trim() || source.memo.trim()),
         status,
         categoryId: form.categoryId ? +form.categoryId : null,
-      });
+      };
+      const res = serverDraftId
+        ? await api.put(`/news/${serverDraftId}`, payload)
+        : await api.post('/news', payload);
+      if (status === 'draft') setServerDraftId(res.data.id);
       if (newsletterOption.enabled && status !== 'draft') {
         await api.post('/newsletter/send', {
           title: form.title, newsId: res.data.id, type: newsletterOption.type,
@@ -608,6 +730,14 @@ export default function AdminNewsCreatePage() {
   const qualityColor = qualityReport.score >= 80 ? 'text-emerald-400' : qualityReport.score >= 55 ? 'text-yellow-400' : 'text-red-400';
   const qualityBarColor = qualityReport.score >= 80 ? 'bg-emerald-500' : qualityReport.score >= 55 ? 'bg-yellow-500' : 'bg-red-500';
 
+  const applyMetaDescription = (description: string) => {
+    setForm((f) => ({ ...f, metaDescription: description }));
+    requestAnimationFrame(() => {
+      metaDescriptionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      metaDescriptionRef.current?.focus();
+    });
+  };
+
   const updateSourceReference = (index: number, patch: Partial<SourceReference>) => {
     setSourceReferences((items) => items.map((item, i) => (i === index ? { ...item, ...patch } : item)));
   };
@@ -715,7 +845,7 @@ export default function AdminNewsCreatePage() {
           </button>
 
           <div className="flex gap-2">
-            <button onClick={() => { refreshDrafts(); setShowDraftManager((v) => !v); }} disabled={loading}
+            <button onClick={() => { refreshAllDrafts(); setShowDraftManager((v) => !v); }} disabled={loading}
               className="text-sm px-3 py-1.5 border border-gray-700 rounded-lg text-gray-400 hover:text-white transition">
               임시글
             </button>
@@ -756,12 +886,17 @@ export default function AdminNewsCreatePage() {
                   {drafts.map((draft) => (
                     <div key={draft.key} className="flex items-center justify-between gap-3 rounded-lg bg-gray-900 border border-gray-700 p-3">
                       <div className="min-w-0">
-                        <p className="truncate text-sm text-gray-200">{draft.title}</p>
+                        <div className="flex items-center gap-2">
+                          <p className="truncate text-sm text-gray-200">{draft.title}</p>
+                          <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] ${draft.source === 'server' ? 'bg-emerald-500/20 text-emerald-300' : 'bg-gray-700 text-gray-400'}`}>
+                            {draft.source === 'server' ? '서버 저장' : '브라우저 저장'}
+                          </span>
+                        </div>
                         <p className="text-xs text-gray-500 mt-0.5">{new Date(draft.savedAt).toLocaleString('ko-KR')}</p>
                       </div>
                       <div className="flex shrink-0 gap-2">
-                        <button onClick={() => loadDraft(draft.key)} className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs text-white hover:bg-blue-700 transition">편집</button>
-                        <button onClick={() => deleteDraft(draft.key)} className="rounded-lg bg-gray-700 px-3 py-1.5 text-xs text-gray-300 hover:bg-red-900 hover:text-red-200 transition">삭제</button>
+                        <button onClick={() => loadDraft(draft)} className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs text-white hover:bg-blue-700 transition">편집</button>
+                        <button onClick={() => deleteDraft(draft)} className="rounded-lg bg-gray-700 px-3 py-1.5 text-xs text-gray-300 hover:bg-red-900 hover:text-red-200 transition">삭제</button>
                       </div>
                     </div>
                   ))}
@@ -901,6 +1036,35 @@ export default function AdminNewsCreatePage() {
               <p className="text-xs text-gray-400 mt-1 line-clamp-2">{metaPreview || '메타 설명을 입력하면 검색 결과 설명처럼 보입니다.'}</p>
             </div>
 
+            <div className="grid gap-3 md:grid-cols-[minmax(0,0.75fr)_minmax(0,1.25fr)]">
+              <div>
+                <label className="mb-1 block text-xs text-gray-500">URL 슬러그</label>
+                <input
+                  type="text"
+                  placeholder="url-slug"
+                  value={form.slug}
+                  onChange={(e) => setForm({ ...form, slug: e.target.value })}
+                  className="w-full rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-white outline-none transition placeholder:text-gray-500 focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <div className="mb-1 flex items-center justify-between gap-2">
+                  <label className="block text-xs text-gray-500">메타 설명</label>
+                  <span className={`text-[11px] ${form.metaDescription.length > 160 ? 'text-red-400' : 'text-gray-500'}`}>
+                    {form.metaDescription.length}/160자
+                  </span>
+                </div>
+                <textarea
+                  ref={metaDescriptionRef}
+                  placeholder="검색 결과에 표시될 설명 (50~160자)"
+                  value={form.metaDescription}
+                  onChange={(e) => setForm({ ...form, metaDescription: e.target.value })}
+                  rows={3}
+                  className="w-full resize-none rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-white outline-none transition placeholder:text-gray-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            </div>
+
             {[
               { title: '필수 항목', items: seoReport.required },
               { title: '권장 항목', items: seoReport.recommended },
@@ -939,7 +1103,7 @@ export default function AdminNewsCreatePage() {
                 </button>
               )}
               {!form.metaDescription && (form.lead || form.content) && (
-                <button onClick={() => setForm((f) => ({ ...f, metaDescription: (f.lead || f.content.replace(/<[^>]*>/g, '')).slice(0, 155) }))}
+                <button onClick={() => applyMetaDescription((form.lead || form.content.replace(/<[^>]*>/g, '')).slice(0, 155))}
                   className="rounded-lg bg-gray-700 px-3 py-1.5 text-xs text-gray-200 hover:bg-gray-600 transition">
                   설명 자동 채우기
                 </button>
@@ -1279,11 +1443,11 @@ export default function AdminNewsCreatePage() {
 
         {/* ✅ AI 보조 패널 */}
         {showAiPanel && (
-          <aside className="w-80 flex-shrink-0 flex flex-col gap-4 sticky top-20 h-fit max-h-[calc(100vh-5rem)] overflow-y-auto">
-            <div className="bg-gray-900 border border-purple-600/30 rounded-2xl p-4 flex flex-col gap-4">
+          <aside className="sticky top-28 w-80 flex-shrink-0 self-start">
+            <div className="flex max-h-[calc(100vh-16rem)] flex-col overflow-hidden rounded-2xl border border-purple-600/30 bg-gray-900 p-4">
 
               {/* 헤더 */}
-              <div className="flex items-center justify-between">
+              <div className="flex flex-shrink-0 items-center justify-between">
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-bold text-white">AI 작성 보조</span>
                 </div>
@@ -1295,10 +1459,10 @@ export default function AdminNewsCreatePage() {
                 </button>
               </div>
 
-              <p className="text-xs text-gray-500">제목 또는 본문 입력 후 전체 분석을 실행하면 AI가 SEO, 제목, 태그, 리드문 등을 한번에 분석해드려요.</p>
+              <p className="mt-4 flex-shrink-0 text-xs text-gray-500">제목 또는 본문 입력 후 전체 분석을 실행하면 AI가 SEO, 제목, 태그, 리드문 등을 한번에 분석해드려요.</p>
 
               {/* AI 결과가 없을 때 */}
-              <div className="border-t border-gray-800 pt-4 flex flex-col gap-3">
+              <div className="mt-4 flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overscroll-contain border-t border-gray-800 pr-1 pt-4 [scrollbar-gutter:stable]">
                 <div className="flex items-center justify-between">
                   <div>
                     <div className="text-xs font-bold text-white">인터뷰 녹취</div>
@@ -1422,8 +1586,6 @@ export default function AdminNewsCreatePage() {
                     </details>
                   </div>
                 )}
-              </div>
-
               {!aiSeoResult && !aiLoading && (
                 <div className="text-center py-6 text-gray-600 text-xs">
                   아직 분석 결과가 없어요.<br />전체 분석 버튼을 눌러주세요!
@@ -1506,7 +1668,7 @@ export default function AdminNewsCreatePage() {
                       <div className="text-xs font-medium text-gray-400 mb-2">메타 설명 추천</div>
                       <div className="bg-gray-800 rounded-lg p-2.5 flex justify-between items-start gap-2">
                         <p className="text-xs text-gray-300 flex-1 leading-relaxed">{aiGeneratedContents.meta}</p>
-                        <button onClick={() => setForm(f => ({ ...f, metaDescription: aiGeneratedContents.meta }))}
+                        <button onClick={() => applyMetaDescription(aiGeneratedContents.meta)}
                           className="text-xs text-blue-400 hover:text-blue-300 transition flex-shrink-0">
                           적용
                         </button>
@@ -1558,6 +1720,7 @@ export default function AdminNewsCreatePage() {
                   )}
                 </>
               )}
+              </div>
             </div>
           </aside>
         )}

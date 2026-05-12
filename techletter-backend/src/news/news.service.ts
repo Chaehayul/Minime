@@ -1,7 +1,7 @@
 import { BadGatewayException, BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { FindOptionsWhere, Repository } from 'typeorm';
 import { News, NewsStatus } from './news.entity';
 import { NewsView } from './news-view.entity';
 import { Tag } from '../tags/tag.entity';
@@ -611,8 +611,13 @@ ${text}`,
       .map((view) => ({ ...view.news, lastViewedAt: view.createdAt }));
   }
 
-  async findAllAdmin(page = 1, limit = 20) {
+  async findAllAdmin(page = 1, limit = 20, status?: string, authorId?: number) {
+    const where: FindOptionsWhere<News> = {};
+    if (status) where.status = status as NewsStatus;
+    if (authorId) where.authorId = authorId;
+
     const [news, total] = await this.newsRepository.findAndCount({
+      where,
       order: { createdAt: 'DESC' },
       skip: (page - 1) * limit,
       take: limit,
@@ -662,7 +667,8 @@ ${text}`,
     }
 
     // ✅ 뉴스 저장 전 본문(content)을 바탕으로 AI 요약본 생성
-    const aiSummary = await this.generateAiSummary(dto.content);
+    const status = (dto.status as NewsStatus) || NewsStatus.DRAFT;
+    const aiSummary = status === NewsStatus.DRAFT ? '' : await this.generateAiSummary(dto.content);
 
     const news = this.newsRepository.create({
       ...dto,
@@ -670,7 +676,7 @@ ${text}`,
       authorId,
       tags,
       aiSummary, // ✅ 생성된 요약본을 DB 엔티티에 매핑
-      status: (dto.status as NewsStatus) || NewsStatus.DRAFT,
+      status,
       publishedAt: dto.status === NewsStatus.PUBLISHED ? new Date() : undefined,
     });
 

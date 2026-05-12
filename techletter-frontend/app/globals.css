@@ -21,7 +21,6 @@ body {
 
 body {
   min-height: 100vh;
-  padding-bottom: calc(112px + env(safe-area-inset-bottom));
   /* 기본은 라이트모드 배경, .dark 클래스가 상위에 있을 때만 다크모드 배경 적용 */
   @apply bg-white text-gray-900 dark:bg-[#0b0b0b] dark:text-white;
 }
