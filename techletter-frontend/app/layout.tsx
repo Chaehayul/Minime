@@ -1,6 +1,7 @@
 import './globals.css';
 import type { Metadata } from 'next';
 import BottomNav from '@/components/layout/BottomNav';
+import { ThemeProvider } from '@/components/ThemeProvider';
 
 export const metadata: Metadata = {
   title: 'TechLetter',
@@ -13,10 +14,12 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="ko">
+    <html lang="ko" suppressHydrationWarning>
       <body>
-        {children}
-        <BottomNav />
+        <ThemeProvider>
+          {children}
+          <BottomNav />
+        </ThemeProvider>
       </body>
     </html>
   );
