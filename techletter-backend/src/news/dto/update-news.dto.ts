@@ -16,6 +16,13 @@ export class UpdateNewsDto {
     type?: string;
     memo?: string;
   }[];
+  isPremium?: boolean;
+  premiumExcerpt?: string;
+  premiumContent?: {
+    keyPoints?: string[];
+    editorComment?: string;
+    relatedLinks?: Array<{ title?: string; url?: string }>;
+  };
   status?: string;
   homeMain?: boolean;
   homeRecommended?: boolean;

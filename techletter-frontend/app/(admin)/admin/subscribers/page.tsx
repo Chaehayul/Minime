@@ -6,7 +6,7 @@ import api from '@/lib/api';
 import AdminNavTabs from '@/components/admin/AdminNavTabs';
 
 type SubscriptionStatus = 'ACTIVE' | 'CANCELED' | 'EXPIRED' | 'PAYMENT_FAILED';
-type PlanType = 'daily' | 'weekly' | 'all';
+type PlanType = 'daily' | 'weekly' | 'all' | 'premium';
 type QuickFilter = 'ALL' | 'TODAY_NEW' | 'PAYMENT_SOON' | 'EXPIRING_SOON';
 
 interface Subscriber {
@@ -62,6 +62,7 @@ const planLabel: Record<PlanType, string> = {
   daily: '데일리',
   weekly: '위클리',
   all: '전체',
+  premium: '프리미엄',
 };
 
 const formatDate = (date: string | null) => {
@@ -298,6 +299,7 @@ export default function SubscribersPage() {
               <option value="daily">데일리</option>
               <option value="weekly">위클리</option>
               <option value="all">전체</option>
+              <option value="premium">프리미엄</option>
             </select>
           </div>
 
@@ -529,6 +531,7 @@ export default function SubscribersPage() {
                     <option value="daily">데일리</option>
                     <option value="weekly">위클리</option>
                     <option value="all">전체</option>
+                    <option value="premium">프리미엄</option>
                   </select>
                 </label>
               </div>

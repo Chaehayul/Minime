@@ -15,13 +15,15 @@ interface User {
   email: string;
   nickname: string;
   role: string;
+  profileImage?: string | null;
+  socialProvider?: string;
 }
 
 type SubscriptionStatus = 'NONE' | 'ACTIVE' | 'CANCELED' | 'EXPIRED' | 'PAYMENT_FAILED';
 
 interface Subscription {
   status: SubscriptionStatus;
-  planType: 'daily' | 'weekly' | 'all' | null;
+  planType: 'daily' | 'weekly' | 'all' | 'premium' | null;
   startDate: string | null;
   endDate: string | null;
   nextPaymentDate: string | null;
@@ -88,6 +90,7 @@ const planLabel: Record<string, string> = {
   daily: '데일리 플랜',
   weekly: '위클리 플랜',
   all: '올인원 플랜',
+  premium: '프리미엄 플랜',
 };
 
 const formatDate = (dateStr: string | null) => {
@@ -323,10 +326,6 @@ export default function MyPage() {
   const [stats, setStats] = useState({ bookmarks: 0, likes: 0, comments: 0 });
   const [loading, setLoading] = useState(true);
 
-  const [editMode, setEditMode] = useState(false);
-  const [newNickname, setNewNickname] = useState('');
-  const [editLoading, setEditLoading] = useState(false);
-
   const { report } = useUserReport();
 
   useEffect(() => {
@@ -347,7 +346,6 @@ export default function MyPage() {
           likes: 0,
           comments: 0,
         });
-        setNewNickname(userRes.data.nickname);
       } catch {
         router.push('/login');
       } finally {
@@ -395,25 +393,14 @@ export default function MyPage() {
 
     try {
       // 2. 백엔드 API에 변경된 설정값 전송 (API 엔드포인트는 진현님의 백엔드 설정에 맞게 PATCH나 PUT으로 맞춰주세요)
-      await api.patch('/subscriptions/me', { [type]: !prevValue });
+      await api.put('/subscriptions/me/settings', {
+        dailyActive: type === 'dailyActive' ? !prevValue : subscription.dailyActive ?? false,
+        weeklyActive: type === 'weeklyActive' ? !prevValue : subscription.weeklyActive ?? false,
+      });
     } catch (err: any) {
       // 3. 서버 오류 시 원래 상태로 롤백
       setSubscription({ ...subscription, [type]: prevValue });
       alert(err.response?.data?.message || '설정 변경에 실패했습니다.');
-    }
-  };
-
-  const handleEditNickname = async () => {
-    if (!newNickname.trim() || newNickname === user?.nickname) return;
-    setEditLoading(true);
-    try {
-      await api.put('/users/me', { nickname: newNickname });
-      setUser((u) => (u ? { ...u, nickname: newNickname } : u));
-      setEditMode(false);
-    } catch (err: any) {
-      alert(err.response?.data?.message || '변경 실패');
-    } finally {
-      setEditLoading(false);
     }
   };
 
@@ -436,6 +423,8 @@ export default function MyPage() {
   const bookmarkCount = report?.bookmarkCount ?? 0;
   const likeCount = report?.likeCount ?? 0;
   const maxVal = Math.max(readCount, bookmarkCount, likeCount, 1);
+  const isAdmin = user?.role === 'admin';
+  const isReporter = user?.role === 'reporter';
 
   return (
     // 전체 배경을 부드러운 다크그레이(#121212)로 변경
@@ -454,13 +443,13 @@ export default function MyPage() {
         <section className="bg-white dark:bg-[#1E1E1E] rounded-2xl border border-gray-100 dark:border-[#2E2E2E] overflow-hidden">
           <div className="p-5">
             <div className="flex items-center gap-3">
-              <ProfileAvatar nickname={user?.nickname} size="lg" />
+              <ProfileAvatar nickname={user?.nickname} imageUrl={user?.profileImage} size="lg" />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="font-semibold text-base text-gray-900 dark:text-white truncate">
                     {user?.nickname}
                   </span>
-                  {user?.role === 'admin' && (
+                  {isAdmin && (
                     <span className="text-[10px] px-1.5 py-0.5 bg-blue-50 dark:bg-[#2A2A2A]
                                      text-blue-600 dark:text-blue-400 rounded-md font-semibold">
                       ADMIN
@@ -469,41 +458,14 @@ export default function MyPage() {
                 </div>
                 <p className="text-xs text-gray-400 dark:text-gray-400 truncate mt-0.5">{user?.email}</p>
               </div>
-              <button
-                onClick={() => setEditMode((v) => !v)}
+              <Link
+                href="/mypage/profile"
                 className="text-xs text-gray-500 dark:text-gray-300 border border-gray-200 dark:border-[#3A3A3A]
                            rounded-lg px-3 py-1.5 hover:bg-gray-50 dark:hover:bg-[#2A2A2A] transition flex-shrink-0 whitespace-nowrap"
               >
-                {editMode ? '닫기' : '편집'}
-              </button>
+                {isAdmin ? '관리자 설정' : '프로필 관리'}
+              </Link>
             </div>
-
-            {editMode && (
-              <div className="mt-4 pt-4 border-t border-gray-100 dark:border-[#2E2E2E] flex flex-col gap-3">
-                <div>
-                  <label className="text-xs text-gray-400 dark:text-gray-400 mb-1.5 block">닉네임 변경</label>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={newNickname}
-                      onChange={(e) => setNewNickname(e.target.value)}
-                      className="flex-1 bg-gray-50 dark:bg-[#121212] border border-gray-200 dark:border-[#3A3A3A]
-                                 rounded-xl px-3 py-2 text-sm text-gray-900 dark:text-white outline-none
-                                 focus:ring-2 focus:ring-gray-900 dark:focus:ring-white transition min-w-0"
-                    />
-                    {/* 저장 버튼에 튀어 나감 방지용 flex-shrink-0 및 whitespace-nowrap 추가 */}
-                    <button
-                      onClick={handleEditNickname}
-                      disabled={editLoading || newNickname === user?.nickname || !newNickname.trim()}
-                      className="px-4 py-2 bg-gray-900 dark:bg-white text-white dark:text-gray-900
-                                 text-sm rounded-xl font-medium disabled:opacity-40 transition whitespace-nowrap flex-shrink-0"
-                    >
-                      {editLoading ? '저장 중...' : '저장'}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
           </div>
 
           <div className="grid grid-cols-2 gap-2 px-5 pb-5">
@@ -537,14 +499,16 @@ export default function MyPage() {
         </section>
 
         {/* ── 2. 관리자 퀵메뉴 ── */}
-        {user?.role === 'admin' && (
+        {isAdmin && (
           <section className="bg-blue-50 dark:bg-[#1E2530] rounded-2xl border border-blue-100
                                dark:border-blue-900/40 p-4">
             <p className="text-[11px] font-semibold text-blue-500 dark:text-blue-400 mb-3">관리자</p>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
               {[
                 { href: '/admin/news/create', icon: 'write' as const, label: '뉴스 작성' },
                 { href: '/admin/news',        icon: 'manage' as const, label: '뉴스 관리' },
+                { href: '/admin/users',       icon: 'subscribers' as const, label: '사용자 관리' },
+                { href: '/admin/reporters',   icon: 'manage' as const, label: '기자 관리' },
                 { href: '/admin/stats',       icon: 'stats' as const, label: '통계 분석' },
                 { href: '/admin/subscribers', icon: 'subscribers' as const, label: '구독자 관리' },
               ].map(({ href, icon, label }) => (
@@ -553,6 +517,32 @@ export default function MyPage() {
                   href={href}
                   className="flex flex-col items-center gap-1.5 py-3 bg-white dark:bg-[#2A2A2A]
                              rounded-xl text-blue-600 dark:text-blue-300 hover:shadow-sm transition"
+                >
+                  <span className="flex h-7 w-7 items-center justify-center">
+                    <AdminShortcutIcon type={icon} />
+                  </span>
+                  <span className="text-[11px] font-medium">{label}</span>
+                </Link>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* ── 2-1. 기자 퀵메뉴 ── */}
+        {isReporter && (
+          <section className="rounded-2xl border border-emerald-100 bg-emerald-50 p-4 dark:border-emerald-900/40 dark:bg-[#1E2A24]">
+            <p className="mb-3 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">기자</p>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {[
+                { href: '/admin/news/create', icon: 'write' as const, label: '기사 작성' },
+                { href: '/reporter/dashboard', icon: 'manage' as const, label: '내 기사/피드' },
+                { href: '/reporter/subscribers', icon: 'subscribers' as const, label: '내 구독자' },
+                { href: '/reporter/dashboard', icon: 'stats' as const, label: '내 통계' },
+              ].map(({ href, icon, label }) => (
+                <Link
+                  key={`${href}-${label}`}
+                  href={href}
+                  className="flex flex-col items-center gap-1.5 rounded-xl bg-white py-3 text-emerald-700 transition hover:shadow-sm dark:bg-[#2A2A2A] dark:text-emerald-300"
                 >
                   <span className="flex h-7 w-7 items-center justify-center">
                     <AdminShortcutIcon type={icon} />
@@ -608,7 +598,40 @@ export default function MyPage() {
         </section>
 
         {/* 구독 설정 */}
-        <div className="pb-6 border-b border-gray-100 dark:border-[#2E2E2E]">
+        <section className="rounded-2xl border border-gray-100 bg-white p-5 dark:border-[#2E2E2E] dark:bg-[#1E1E1E]">
+          <div className="mb-4 flex items-center gap-2">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+            <span className="text-sm font-bold text-gray-900 dark:text-white">구독 상태</span>
+          </div>
+          <SubscriptionSection
+            subscription={subscription}
+            onUnsubscribe={handleUnsubscribe}
+            onResubscribe={handleResubscribe}
+          />
+          {subscription?.status === 'ACTIVE' && (
+            <div className="mt-4 border-t border-gray-100 pt-4 dark:border-[#2E2E2E]">
+              <div className="mb-3 text-xs font-semibold text-gray-500">수신 설정</div>
+              <div className="flex flex-col gap-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-sm text-gray-900 dark:text-gray-200">데일리 뉴스레터</div>
+                    <div className="text-xs text-gray-500">{subscription.dailyActive ? '매일 오전 수신 중' : '수신 중지'}</div>
+                  </div>
+                  <Toggle on={subscription.dailyActive ?? false} onToggle={() => handleToggleSubscription('dailyActive')} />
+                </div>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-sm text-gray-900 dark:text-gray-200">주간 뉴스레터</div>
+                    <div className="text-xs text-gray-500">{subscription.weeklyActive ? '매주 월요일 수신 중' : '수신 중지'}</div>
+                  </div>
+                  <Toggle on={subscription.weeklyActive ?? false} onToggle={() => handleToggleSubscription('weeklyActive')} />
+                </div>
+              </div>
+            </div>
+          )}
+        </section>
+
+        <div className="hidden">
           <div className="flex items-center gap-2 mb-4">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
             <span className="font-bold text-sm text-gray-900 dark:text-white">구독 설정</span>

@@ -65,6 +65,19 @@ export class News {
     memo?: string;
   }> | null;
 
+  @Column({ default: false })
+  isPremium!: boolean;
+
+  @Column({ type: 'text', nullable: true })
+  premiumExcerpt!: string | null;
+
+  @Column({ type: 'simple-json', nullable: true })
+  premiumContent!: {
+    keyPoints?: string[];
+    editorComment?: string;
+    relatedLinks?: Array<{ title?: string; url?: string }>;
+  } | null;
+
   @Column({ type: 'enum', enum: NewsStatus, default: NewsStatus.DRAFT })
   status!: NewsStatus;
 

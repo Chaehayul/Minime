@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, Suspense } from 'react';
+import { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import api from '@/lib/api';
@@ -23,6 +23,16 @@ function CheckoutForm() {
   const [cardHolder, setCardHolder] = useState('');
   const [agree, setAgree] = useState(false);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    api.get('/subscriptions/me')
+      .then((res) => {
+        if (res.data?.status === 'ACTIVE' && res.data?.planType === plan) {
+          router.replace('/mypage');
+        }
+      })
+      .catch(() => undefined);
+  }, [plan, router]);
 
   const handleCardNumber = (v: string) => {
     const raw = v.replace(/\D/g, '').slice(0, 16);
@@ -125,7 +135,7 @@ function CheckoutForm() {
         {/* 선택한 플랜 요약 */}
         <div className="bg-blue-600/10 border border-blue-600/30 rounded-2xl p-4 flex justify-between items-center">
           <div>
-            <div className="text-sm text-blue-400 font-medium">{planNames[plan]}</div>
+            <div className="text-sm text-blue-400 font-medium">{planNames[plan] || '프리미엄 플랜'}</div>
             <div className="text-xs text-gray-400 mt-0.5">첫 달 무료 체험 후 자동 결제</div>
           </div>
           <div className="text-right">

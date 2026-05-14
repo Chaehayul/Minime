@@ -44,6 +44,7 @@ interface Stats {
     daily?: number;
     weekly?: number;
     all?: number;
+    premium?: number;
   };
   totalNews?: number;
   draftNews?: number;
@@ -140,6 +141,7 @@ export default function AdminStatsPage() {
       daily: stats?.subscriberPlans?.daily ?? 0,
       weekly: stats?.subscriberPlans?.weekly ?? 0,
       all: stats?.subscriberPlans?.all ?? 0,
+      premium: stats?.subscriberPlans?.premium ?? 0,
     },
     totalNews: stats?.totalNews ?? 0,
     draftNews: stats?.draftNews ?? 0,

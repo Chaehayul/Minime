@@ -34,6 +34,7 @@ export default function AdminNewsPage() {
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
+  const [role, setRole] = useState<string | null>(null);
 
   useEffect(() => {
     fetchNews();
@@ -41,9 +42,13 @@ export default function AdminNewsPage() {
 
   const fetchNews = async () => {
     try {
-      const res = await api.get(`/news/admin?page=${page}&limit=20`);
-      setNewsList(res.data.news);
-      setTotal(res.data.total);
+      const [meRes, newsRes] = await Promise.all([
+        api.get('/users/me'),
+        api.get(`/news/admin?page=${page}&limit=20`),
+      ]);
+      setRole(meRes.data?.role || null);
+      setNewsList(newsRes.data.news);
+      setTotal(newsRes.data.total);
     } catch {
       router.push('/login');
     } finally {
@@ -88,6 +93,8 @@ export default function AdminNewsPage() {
     }
   };
 
+  const isReporter = role === 'reporter';
+
   return (
     <div className="min-h-screen pb-28 transition-colors duration-200">
       <header className="sticky top-0 z-50 border-b border-gray-800 bg-gray-950">
@@ -96,7 +103,7 @@ export default function AdminNewsPage() {
             <button onClick={() => router.push('/mypage')} className="text-gray-400 transition hover:text-white" aria-label="뒤로가기">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="15 18 9 12 15 6"/></svg>
             </button>
-            <span className="text-base font-bold">뉴스 관리</span>
+            <span className="text-base font-bold">{isReporter ? '내 기사 관리' : '뉴스 관리'}</span>
             <span className="text-xs text-gray-500">총 {total}개</span>
           </div>
           <Link href="/admin/news/create" className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm text-white transition hover:bg-blue-700">
@@ -123,7 +130,7 @@ export default function AdminNewsPage() {
                     <th className="w-24 px-3 py-3 text-left">카테고리</th>
                     <th className="w-24 px-3 py-3 text-left">상태</th>
                     <th className="w-20 px-3 py-3 text-left">조회</th>
-                    <th className="w-56 px-3 py-3 text-left">홈 노출</th>
+                    {!isReporter && <th className="w-56 px-3 py-3 text-left">홈 노출</th>}
                     <th className="w-28 px-3 py-3 text-left">작성일</th>
                     <th className="w-28 px-3 py-3 text-left">관리</th>
                   </tr>
@@ -139,50 +146,58 @@ export default function AdminNewsPage() {
                       </td>
                       <td className="px-3 py-3 text-xs text-gray-400">{news.category?.name || '-'}</td>
                       <td className="px-3 py-3">
-                        <select
-                          value={news.status}
-                          onChange={(e) => handleStatusChange(news.id, e.target.value)}
-                          className={`cursor-pointer bg-transparent text-xs outline-none ${statusLabel[news.status]?.color || 'text-gray-400'}`}
-                        >
-                          {Object.entries(statusLabel).map(([value, { label }]) => (
-                            <option key={value} value={value} className="bg-gray-800 text-white">{label}</option>
-                          ))}
-                        </select>
+                        {isReporter ? (
+                          <span className={`text-xs ${statusLabel[news.status]?.color || 'text-gray-400'}`}>
+                            {statusLabel[news.status]?.label || news.status}
+                          </span>
+                        ) : (
+                          <select
+                            value={news.status}
+                            onChange={(e) => handleStatusChange(news.id, e.target.value)}
+                            className={`cursor-pointer bg-transparent text-xs outline-none ${statusLabel[news.status]?.color || 'text-gray-400'}`}
+                          >
+                            {Object.entries(statusLabel).map(([value, { label }]) => (
+                              <option key={value} value={value} className="bg-gray-800 text-white">{label}</option>
+                            ))}
+                          </select>
+                        )}
                       </td>
                       <td className="px-3 py-3 text-xs text-gray-400">{news.viewCount.toLocaleString()}</td>
-                      <td className="px-3 py-3">
-                        <div className="flex flex-wrap gap-1">
-                          {[
-                            ['homeMain', '메인'],
-                            ['homeRecommended', '추천'],
-                            ['homeUrgent', '긴급'],
-                          ].map(([key, label]) => {
-                            const typedKey = key as 'homeMain' | 'homeRecommended' | 'homeUrgent';
-                            const active = Boolean(news[typedKey]);
-                            return (
-                              <button
-                                key={key}
-                                type="button"
-                                onClick={() => handleHomeFlagChange(news.id, typedKey, !active)}
-                                className={`rounded-full border px-2 py-1 text-[11px] font-semibold transition ${
-                                  active
-                                    ? 'border-blue-500 bg-blue-600 text-white'
-                                    : 'border-gray-700 text-gray-400 hover:border-gray-500 hover:text-white'
-                                }`}
-                              >
-                                {label}
-                              </button>
-                            );
-                          })}
-                          <input
-                            type="number"
-                            value={news.homeOrder ?? 0}
-                            onChange={(e) => handleHomeOrderChange(news.id, Number(e.target.value) || 0)}
-                            className="h-7 w-14 rounded-full border border-gray-700 bg-transparent px-2 text-center text-[11px] text-gray-300 outline-none focus:border-blue-500"
-                            aria-label="홈 노출 순서"
-                          />
-                        </div>
-                      </td>
+                      {!isReporter && (
+                        <td className="px-3 py-3">
+                          <div className="flex flex-wrap gap-1">
+                            {[
+                              ['homeMain', '메인'],
+                              ['homeRecommended', '추천'],
+                              ['homeUrgent', '긴급'],
+                            ].map(([key, label]) => {
+                              const typedKey = key as 'homeMain' | 'homeRecommended' | 'homeUrgent';
+                              const active = Boolean(news[typedKey]);
+                              return (
+                                <button
+                                  key={key}
+                                  type="button"
+                                  onClick={() => handleHomeFlagChange(news.id, typedKey, !active)}
+                                  className={`rounded-full border px-2 py-1 text-[11px] font-semibold transition ${
+                                    active
+                                      ? 'border-blue-500 bg-blue-600 text-white'
+                                      : 'border-gray-700 text-gray-400 hover:border-gray-500 hover:text-white'
+                                  }`}
+                                >
+                                  {label}
+                                </button>
+                              );
+                            })}
+                            <input
+                              type="number"
+                              value={news.homeOrder ?? 0}
+                              onChange={(e) => handleHomeOrderChange(news.id, Number(e.target.value) || 0)}
+                              className="h-7 w-14 rounded-full border border-gray-700 bg-transparent px-2 text-center text-[11px] text-gray-300 outline-none focus:border-blue-500"
+                              aria-label="홈 노출 순서"
+                            />
+                          </div>
+                        </td>
+                      )}
                       <td className="px-3 py-3 text-xs text-gray-500">{new Date(news.createdAt).toLocaleDateString('ko-KR')}</td>
                       <td className="px-3 py-3">
                         <div className="flex items-center gap-2">

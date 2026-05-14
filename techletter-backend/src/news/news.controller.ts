@@ -6,6 +6,7 @@ import { NewsService, RewriteSelectionDto } from './news.service';
 import { CreateNewsDto } from './dto/create-news.dto';
 import { UpdateNewsDto } from './dto/update-news.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { OptionalJwtAuthGuard } from '../auth/optional-jwt-auth.guard';
 
 @Controller('news')
 export class NewsController {
@@ -41,7 +42,7 @@ export class NewsController {
       +page || 1,
       +limit || 20,
       status,
-      mine === 'true' ? req.user.id : undefined,
+      mine === 'true' || req.user.role !== 'admin' ? req.user.id : undefined,
     );
   }
 
@@ -52,8 +53,9 @@ export class NewsController {
   }
 
   @Get('slug/:slug')
-  findBySlug(@Param('slug') slug: string) {
-    return this.newsService.findBySlug(slug);
+  @UseGuards(OptionalJwtAuthGuard)
+  findBySlug(@Param('slug') slug: string, @Request() req: any) {
+    return this.newsService.findBySlug(slug, req.user);
   }
 
   @Get('naver/search')
@@ -96,11 +98,12 @@ export class NewsController {
   }
 
   @Get(':id')
-  async findOne(@Param('id') id: string, @Headers('x-view-token') viewToken: string) {
+  @UseGuards(OptionalJwtAuthGuard)
+  async findOne(@Param('id') id: string, @Headers('x-view-token') viewToken: string, @Request() req: any) {
     if (viewToken) {
       await this.newsService.incrementViewCount(+id);
     }
-    return this.newsService.findOne(+id);
+    return this.newsService.findOne(+id, req.user);
   }
 
   @Post(':id/view-history')
@@ -117,18 +120,18 @@ export class NewsController {
   @Post()
   @UseGuards(JwtAuthGuard)
   create(@Body() dto: CreateNewsDto, @Request() req: any) {
-    return this.newsService.create(dto, req.user.id);
+    return this.newsService.create(dto, req.user);
   }
 
   @Put(':id')
   @UseGuards(JwtAuthGuard)
-  update(@Param('id') id: string, @Body() dto: UpdateNewsDto) {
-    return this.newsService.update(+id, dto);
+  update(@Param('id') id: string, @Body() dto: UpdateNewsDto, @Request() req: any) {
+    return this.newsService.update(+id, dto, req.user);
   }
 
   @Delete(':id')
   @UseGuards(JwtAuthGuard)
-  remove(@Param('id') id: string) {
-    return this.newsService.remove(+id);
+  remove(@Param('id') id: string, @Request() req: any) {
+    return this.newsService.remove(+id, req.user);
   }
 }

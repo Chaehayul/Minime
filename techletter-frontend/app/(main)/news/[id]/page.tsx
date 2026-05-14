@@ -2,18 +2,36 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import Link from 'next/link';
 import api, { getImageUrl } from '@/lib/api';
 
 interface News {
   id: number;
   title: string;
   content: string;
+  isPremium?: boolean;
+  contentLocked?: boolean;
+  hasPremiumAccess?: boolean;
+  requiredPlan?: string | null;
+  premiumContent?: {
+    keyPoints?: string[];
+    editorComment?: string;
+    relatedLinks?: Array<{ title?: string; url?: string }>;
+  } | null;
   thumbnailUrl: string | null;
   viewCount: number;
   likeCount: number;
   shareCount: number;
   createdAt: string;
-  author: { nickname: string };
+  author: { id: number; nickname: string };
+}
+
+interface ReporterProfile {
+  id: number;
+  slug: string;
+  displayName: string;
+  headline?: string | null;
+  profileImage?: string | null;
 }
 
 interface Comment {
@@ -35,6 +53,7 @@ export default function NewsDetailPage() {
   const [commentText, setCommentText] = useState('');
   const [liked, setLiked] = useState(false);
   const [bookmarked, setBookmarked] = useState(false);
+  const [reporterProfile, setReporterProfile] = useState<ReporterProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -57,6 +76,11 @@ export default function NewsDetailPage() {
 
         setNews(newsRes.data);
         setComments(commentsRes.data);
+        if (newsRes.data.author?.id) {
+          api.get(`/reporters/user/${newsRes.data.author.id}`)
+            .then((res) => setReporterProfile(res.data))
+            .catch(() => setReporterProfile(null));
+        }
       } catch (err) {
         console.error(err);
       } finally {
@@ -150,9 +174,34 @@ export default function NewsDetailPage() {
             <span>댓글 {formatNumber(comments.length)}</span>
             <span>공유 {formatNumber(news.shareCount)}</span>
             <span>{new Date(news.createdAt).toLocaleDateString('ko-KR')}</span>
-            <span>{news.author?.nickname}</span>
+            {reporterProfile ? (
+              <Link href={`/reporters/${reporterProfile.slug}`} className="font-semibold text-blue-400 hover:text-blue-300">
+                {news.author?.nickname}
+              </Link>
+            ) : (
+              <span>{news.author?.nickname}</span>
+            )}
           </div>
         </div>
+
+        {reporterProfile && (
+          <Link href={`/reporters/${reporterProfile.slug}`} className="flex items-center gap-3 rounded-2xl border border-blue-900/40 bg-blue-950/30 p-4 transition hover:border-blue-700">
+            {getImageUrl(reporterProfile.profileImage) ? (
+              <img src={getImageUrl(reporterProfile.profileImage)} alt="" className="h-11 w-11 rounded-full object-cover" />
+            ) : (
+              <div className="flex h-11 w-11 items-center justify-center rounded-full bg-blue-600 text-sm font-bold text-white">
+                {reporterProfile.displayName[0]}
+              </div>
+            )}
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-bold text-white">{reporterProfile.displayName}</p>
+              <p className="mt-1 line-clamp-1 text-xs text-blue-100/80">
+                {reporterProfile.headline || '기자의 피드와 작성 기사를 확인해보세요.'}
+              </p>
+            </div>
+            <span className="text-xs font-semibold text-blue-300">프로필</span>
+          </Link>
+        )}
 
         {getImageUrl(news.thumbnailUrl) ? (
           <img src={getImageUrl(news.thumbnailUrl)} alt={news.title} className="h-48 w-full rounded-xl object-cover" />
@@ -166,6 +215,47 @@ export default function NewsDetailPage() {
           className="prose prose-invert max-w-none text-sm leading-relaxed text-gray-300"
           dangerouslySetInnerHTML={{ __html: news.content }}
         />
+
+        {news.contentLocked ? (
+          <div className="rounded-2xl border border-yellow-500/30 bg-yellow-500/10 p-5">
+            <div className="mb-2 inline-flex rounded-full bg-yellow-500/20 px-2.5 py-1 text-xs font-bold text-yellow-300">
+              프리미엄 전용
+            </div>
+            <h2 className="text-base font-bold text-white">전체 기사는 프리미엄 구독자에게 공개됩니다.</h2>
+            <p className="mt-2 text-sm leading-relaxed text-gray-300">
+              프리미엄 플랜을 구독하면 전체 본문, 기자 리포트, 구독자 전용 핵심 포인트를 바로 확인할 수 있습니다.
+            </p>
+            <Link href="/subscriptions/plans" className="mt-4 inline-flex rounded-xl bg-yellow-500 px-4 py-2.5 text-sm font-bold text-gray-950 transition hover:bg-yellow-400">
+              프리미엄 구독 보기
+            </Link>
+          </div>
+        ) : news.premiumContent && (
+          <div className="rounded-2xl border border-yellow-500/30 bg-yellow-500/10 p-5">
+            <div className="mb-3 text-xs font-bold text-yellow-300">프리미엄 리포트</div>
+            {!!news.premiumContent.keyPoints?.length && (
+              <div className="space-y-2">
+                {news.premiumContent.keyPoints.map((point, index) => (
+                  <div key={`${point}-${index}`} className="flex gap-2 text-sm text-gray-200">
+                    <span className="font-bold text-yellow-300">{index + 1}.</span>
+                    <span>{point}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            {news.premiumContent.editorComment && (
+              <p className="mt-4 border-l-2 border-yellow-400 pl-3 text-sm italic text-gray-300">{news.premiumContent.editorComment}</p>
+            )}
+            {!!news.premiumContent.relatedLinks?.length && (
+              <div className="mt-4 flex flex-col gap-2">
+                {news.premiumContent.relatedLinks.map((link, index) => (
+                  <a key={`${link.url}-${index}`} href={link.url} target="_blank" rel="noreferrer" className="text-sm font-semibold text-yellow-300 hover:text-yellow-200">
+                    {link.title || link.url}
+                  </a>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="flex items-center justify-between border-y border-gray-800 py-3">
           <div className="flex flex-wrap gap-4">

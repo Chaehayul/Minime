@@ -31,7 +31,7 @@ export class SubscriptionsController {
     @Req() req: any,
     @Body()
     body: {
-      planType: 'daily' | 'weekly' | 'all';
+      planType: PlanType;
       paymentMethodBrand: string;
       paymentMethodLast4: string;
     },

@@ -102,10 +102,11 @@ export class StatsService {
       this.newsletterRepository.count({ where: { status: 'SCHEDULED' } }),
     ]);
 
-    const [dailySubscribers, weeklySubscribers, allSubscribers, monthNewSubscribers, monthCanceledSubscribers, subscriberTrendRaw, categoryRaw] = await Promise.all([
+    const [dailySubscribers, weeklySubscribers, allSubscribers, premiumSubscribers, monthNewSubscribers, monthCanceledSubscribers, subscriberTrendRaw, categoryRaw] = await Promise.all([
       this.subscriptionRepository.count({ where: { planType: 'daily' } }),
       this.subscriptionRepository.count({ where: { planType: 'weekly' } }),
       this.subscriptionRepository.count({ where: { planType: 'all' } }),
+      this.subscriptionRepository.count({ where: { planType: 'premium' } }),
       this.subscriptionRepository
         .createQueryBuilder('subscription')
         .where('subscription.createdAt >= DATE_FORMAT(CURDATE(), "%Y-%m-01")')
@@ -167,6 +168,7 @@ export class StatsService {
         daily: dailySubscribers,
         weekly: weeklySubscribers,
         all: allSubscribers,
+        premium: premiumSubscribers,
       },
       totalNews,
       draftNews,

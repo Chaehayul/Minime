@@ -15,6 +15,9 @@ import { SubscriptionsModule } from './subscriptions/subscriptions.module';
 import { StatsModule } from './stats/stats.module';
 import { UploadModule } from './upload/upload.module';
 import { InterviewsModule } from './interviews/interviews.module';
+import { ReportersModule } from './reporters/reporters.module';
+import { NotificationsModule } from './notifications/notifications.module';
+import { SearchModule } from './search/search.module';
 
 @Module({
   imports: [
@@ -49,6 +52,9 @@ import { InterviewsModule } from './interviews/interviews.module';
     StatsModule,
     UploadModule,
     InterviewsModule,
+    ReportersModule,
+    NotificationsModule,
+    SearchModule,
   ],
   controllers: [AppController],
   providers: [AppService],

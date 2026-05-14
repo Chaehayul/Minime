@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import api, { getImageUrl } from '@/lib/api';
 import ProfileAvatar from '@/components/common/ProfileAvatar';
+import SearchPreviewInput from '@/components/common/SearchPreviewInput';
 
 interface Category {
   id: number;
@@ -49,7 +50,7 @@ interface User {
 
 interface Subscription {
   status: 'NONE' | 'ACTIVE' | 'CANCELED' | 'EXPIRED' | 'PAYMENT_FAILED';
-  planType: 'daily' | 'weekly' | 'all' | null;
+  planType: 'daily' | 'weekly' | 'all' | 'premium' | null;
 }
 
 interface UserReport {
@@ -68,6 +69,8 @@ const emptyFeed: HomeFeed = {
   newsletterPreview: [],
 };
 
+const asArray = <T,>(value: unknown): T[] => (Array.isArray(value) ? value : []);
+
 const stripHtml = (value = '') => value.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
 
 const formatDate = (date: string | null | undefined) => {
@@ -80,6 +83,7 @@ const planLabel: Record<string, string> = {
   daily: '데일리',
   weekly: '위클리',
   all: '전체',
+  premium: '프리미엄',
 };
 
 function uniqueNews(list: News[]) {
@@ -159,14 +163,21 @@ export default function HomePage() {
           ...authRequests,
         ]);
 
-        setHomeFeed({ ...emptyFeed, ...(homeRes.data || {}) });
-        setLatestNews(newsRes.data.news || []);
-        setTotal(newsRes.data.total || 0);
-        setCategories(categoryRes.data || []);
+        const homeData = typeof homeRes.data === 'object' && homeRes.data !== null ? homeRes.data : {};
+        setHomeFeed({
+          mainNews: asArray<News>((homeData as Partial<HomeFeed>).mainNews),
+          urgentNews: asArray<News>((homeData as Partial<HomeFeed>).urgentNews),
+          recommendedNews: asArray<News>((homeData as Partial<HomeFeed>).recommendedNews),
+          weeklyPopular: asArray<News>((homeData as Partial<HomeFeed>).weeklyPopular),
+          newsletterPreview: asArray<News>((homeData as Partial<HomeFeed>).newsletterPreview),
+        });
+        setLatestNews(asArray<News>(newsRes.data?.news));
+        setTotal(Number(newsRes.data?.total) || 0);
+        setCategories(asArray<Category>(categoryRes.data));
         if (userRes) setUser(userRes.data);
         if (subscriptionRes) setSubscription(subscriptionRes.data);
         if (reportRes) setReport(reportRes.data);
-        if (bookmarkRes) setBookmarks(bookmarkRes.data || []);
+        if (bookmarkRes) setBookmarks(asArray<Bookmark>(bookmarkRes.data));
       } catch (error) {
         console.error(error);
       } finally {
@@ -186,8 +197,8 @@ export default function HomePage() {
         const params: Record<string, number> = { limit: 12 };
         if (activeCategoryId !== null) params.categoryId = activeCategoryId;
         const res = await api.get('/news', { params });
-        setLatestNews(res.data.news || []);
-        setTotal(res.data.total || 0);
+        setLatestNews(asArray<News>(res.data?.news));
+        setTotal(Number(res.data?.total) || 0);
       } catch (error) {
         console.error(error);
       } finally {
@@ -205,9 +216,9 @@ export default function HomePage() {
       const params: Record<string, number> = { page: nextPage, limit: 12 };
       if (activeCategoryId !== null) params.categoryId = activeCategoryId;
       const res = await api.get('/news', { params });
-      setLatestNews((prev) => [...prev, ...(res.data.news || [])]);
+      setLatestNews((prev) => [...prev, ...asArray<News>(res.data?.news)]);
       setPage(nextPage);
-      setTotal(res.data.total || total);
+      setTotal(Number(res.data?.total) || total);
     } finally {
       setNewsLoading(false);
     }
@@ -231,7 +242,7 @@ export default function HomePage() {
 
   const personalizedNews = useMemo(() => {
     const categoryIds = new Set(report?.topCategories?.map((item) => item.category.id) || []);
-    const savedIds = new Set(bookmarks.map((bookmark) => bookmark.news?.id).filter(Boolean));
+    const savedIds = new Set(asArray<Bookmark>(bookmarks).map((bookmark) => bookmark.news?.id).filter(Boolean));
     const candidates = uniqueNews([...homeFeed.recommendedNews, ...latestNews, ...weeklyPopular]);
     return candidates
       .map((news) => {
@@ -256,13 +267,7 @@ export default function HomePage() {
       <header className="sticky top-0 z-50 border-b border-gray-100 bg-white/95 backdrop-blur dark:border-gray-800 dark:bg-[#0b0b0b]/95">
         <div className="mx-auto flex h-16 max-w-5xl items-center gap-3 px-4">
           <Link href="/" className="text-lg font-bold text-gray-900 dark:text-white">MINIME</Link>
-          <Link href="/search" className="flex min-h-11 flex-1 items-center gap-2.5 rounded-full bg-gray-100 px-4 py-2.5 dark:bg-gray-800">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" className="text-gray-400">
-              <circle cx="11" cy="11" r="8" />
-              <path d="m21 21-4.35-4.35" />
-            </svg>
-            <span className="text-[15px] text-gray-400">뉴스, 태그, 키워드 검색</span>
-          </Link>
+          <SearchPreviewInput className="flex-1" placeholder="뉴스, 기자, 아이디 검색" />
           {isLoggedIn ? (
             <Link href="/mypage" aria-label="마이페이지">
               <ProfileAvatar nickname={user?.nickname} size="md" />

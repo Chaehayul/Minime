@@ -1,4 +1,4 @@
-import { BadGatewayException, BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadGatewayException, BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { FindOptionsWhere, Repository } from 'typeorm';
@@ -8,7 +8,10 @@ import { Tag } from '../tags/tag.entity';
 import { Like } from '../interactions/entities/like.entity';
 import { CreateNewsDto } from './dto/create-news.dto';
 import { UpdateNewsDto } from './dto/update-news.dto';
+import { NotificationsService } from '../notifications/notifications.service';
 import OpenAI from 'openai'; // ✅ OpenAI 임포트 추가
+
+import { Subscription } from '../subscriptions/subscription.entity';
 
 interface NaverNewsItem {
   title: string;
@@ -102,6 +105,9 @@ export class NewsService {
     private tagRepository: Repository<Tag>,
     @InjectRepository(Like)
     private likeRepository: Repository<Like>,
+    @InjectRepository(Subscription)
+    private subscriptionRepository: Repository<Subscription>,
+    private readonly notificationsService: NotificationsService,
     private readonly configService: ConfigService, // ✅ 이 부분이 추가되었습니다!
   ) {
     // ✅ 클래스 생성 시점에 OpenAI 초기화
@@ -626,7 +632,7 @@ ${text}`,
     return { news, total, page, limit };
   }
 
-  async findOne(id: number) {
+  async findOne(id: number, viewer?: { id: number; role: string } | null) {
     const news = await this.newsRepository.findOne({
       where: { id },
       relations: ['author', 'category', 'tags'],
@@ -637,25 +643,27 @@ ${text}`,
       news.likeCount = likeCount;
       await this.newsRepository.save(news);
     }
-    return news;
+    return this.applyPremiumAccess(news, viewer);
   }
 
-  async findBySlug(slug: string) {
+  async findBySlug(slug: string, viewer?: { id: number; role: string } | null) {
     const news = await this.newsRepository.findOne({
       where: { slug },
       relations: ['author', 'category', 'tags'],
     });
     if (!news) throw new NotFoundException('뉴스를 찾을 수 없습니다.');
-    return news;
+    return this.applyPremiumAccess(news, viewer);
   }
 
-  async create(dto: CreateNewsDto, authorId: number) {
-    const slug = dto.slug || this.generateSlug(dto.title);
+  async create(dto: CreateNewsDto, requester: { id: number; role: string }) {
+    this.ensureCanCreateNews(requester);
+    const cleanDto = this.sanitizeNewsDtoForRole(dto, requester.role) as CreateNewsDto;
+    const slug = cleanDto.slug || this.generateSlug(cleanDto.title);
     let tags: Tag[] = [];
 
-    if (dto.tags && dto.tags.length > 0) {
+    if (cleanDto.tags && cleanDto.tags.length > 0) {
       tags = await Promise.all(
-        dto.tags.map(async (tagName) => {
+        cleanDto.tags.map(async (tagName) => {
           let tag = await this.tagRepository.findOne({ where: { name: tagName } });
           if (!tag) {
             tag = this.tagRepository.create({ name: tagName, slug: this.generateSlug(tagName) });
@@ -667,28 +675,37 @@ ${text}`,
     }
 
     // ✅ 뉴스 저장 전 본문(content)을 바탕으로 AI 요약본 생성
-    const status = (dto.status as NewsStatus) || NewsStatus.DRAFT;
-    const aiSummary = status === NewsStatus.DRAFT ? '' : await this.generateAiSummary(dto.content);
+    const status = (cleanDto.status as NewsStatus) || NewsStatus.DRAFT;
+    const aiSummary = status === NewsStatus.DRAFT ? '' : await this.generateAiSummary(cleanDto.content);
 
     const news = this.newsRepository.create({
-      ...dto,
+      ...cleanDto,
       slug,
-      authorId,
+      authorId: requester.id,
       tags,
+      isPremium: Boolean(cleanDto.isPremium),
+      premiumExcerpt: cleanDto.premiumExcerpt?.trim() || null,
+      premiumContent: this.normalizePremiumContent(cleanDto.premiumContent),
       aiSummary, // ✅ 생성된 요약본을 DB 엔티티에 매핑
       status,
-      publishedAt: dto.status === NewsStatus.PUBLISHED ? new Date() : undefined,
+      publishedAt: cleanDto.status === NewsStatus.PUBLISHED ? new Date() : undefined,
     });
 
-    return this.newsRepository.save(news);
+    const saved = await this.newsRepository.save(news);
+    if (saved.status === NewsStatus.PUBLISHED) {
+      await this.notificationsService.notifyReporterArticle(saved);
+    }
+    return saved;
   }
 
-  async update(id: number, dto: UpdateNewsDto) {
-    const news = await this.findOne(id);
+  async update(id: number, dto: UpdateNewsDto, requester?: { id: number; role: string }) {
+    const news = await this.getNewsEntity(id);
+    this.ensureCanManageNews(news, requester);
+    const cleanDto = this.sanitizeNewsDtoForRole(dto, requester?.role) as UpdateNewsDto;
 
-    if (dto.tags) {
+    if (cleanDto.tags) {
       news.tags = await Promise.all(
-        dto.tags.map(async (tagName) => {
+        cleanDto.tags.map(async (tagName) => {
           let tag = await this.tagRepository.findOne({ where: { name: tagName } });
           if (!tag) {
             tag = this.tagRepository.create({ name: tagName, slug: this.generateSlug(tagName) });
@@ -699,20 +716,109 @@ ${text}`,
       );
     }
 
-    if (dto.status === NewsStatus.PUBLISHED && !news.publishedAt) {
+    const wasPublished = news.status === NewsStatus.PUBLISHED;
+    if (cleanDto.status === NewsStatus.PUBLISHED && !news.publishedAt) {
       news.publishedAt = new Date();
     }
 
     // (선택 사항) 만약 뉴스 내용(content)이 수정될 때마다 요약본도 갱신하고 싶다면
     // update 메서드 안에도 const aiSummary = await this.generateAiSummary(dto.content); 를 추가할 수 있습니다.
     
-    Object.assign(news, { ...dto, tags: news.tags });
-    return this.newsRepository.save(news);
+    Object.assign(news, { ...cleanDto, tags: news.tags });
+    if (cleanDto.isPremium !== undefined) news.isPremium = Boolean(cleanDto.isPremium);
+    if (cleanDto.premiumExcerpt !== undefined) news.premiumExcerpt = cleanDto.premiumExcerpt?.trim() || null;
+    if (cleanDto.premiumContent !== undefined) news.premiumContent = this.normalizePremiumContent(cleanDto.premiumContent);
+    const saved = await this.newsRepository.save(news);
+    if (!wasPublished && saved.status === NewsStatus.PUBLISHED) {
+      await this.notificationsService.notifyReporterArticle(saved);
+    }
+    return saved;
   }
 
-  async remove(id: number) {
-    const news = await this.findOne(id);
+  async remove(id: number, requester?: { id: number; role: string }) {
+    const news = await this.getNewsEntity(id);
+    this.ensureCanManageNews(news, requester);
     return this.newsRepository.remove(news);
+  }
+
+  private async getNewsEntity(id: number) {
+    const news = await this.newsRepository.findOne({
+      where: { id },
+      relations: ['author', 'category', 'tags'],
+    });
+    if (!news) throw new NotFoundException('뉴스를 찾을 수 없습니다.');
+    return news;
+  }
+
+  private ensureCanManageNews(news: News, requester?: { id: number; role: string }) {
+    if (!requester) return;
+    if (requester.role === 'admin') return;
+    if (news.authorId === requester.id) return;
+    throw new ForbiddenException('You can only manage your own news.');
+  }
+
+  private ensureCanCreateNews(requester?: { id: number; role: string }) {
+    if (!requester || (requester.role !== 'admin' && requester.role !== 'reporter')) {
+      throw new ForbiddenException('Approved reporter or admin permission is required.');
+    }
+  }
+
+  private sanitizeNewsDtoForRole<T extends CreateNewsDto | UpdateNewsDto>(dto: T, role?: string): T {
+    if (role === 'admin') return dto;
+    const clean = { ...dto };
+    delete clean.homeMain;
+    delete clean.homeRecommended;
+    delete clean.homeUrgent;
+    delete clean.homeOrder;
+    return clean;
+  }
+
+  private async applyPremiumAccess(news: News, viewer?: { id: number; role: string } | null) {
+    if (!news.isPremium) {
+      return { ...news, contentLocked: false, hasPremiumAccess: true, requiredPlan: null };
+    }
+
+    const hasAccess = await this.hasPremiumAccess(news, viewer);
+    if (hasAccess) {
+      return { ...news, contentLocked: false, hasPremiumAccess: true, requiredPlan: 'premium' };
+    }
+
+    return {
+      ...news,
+      content: news.premiumExcerpt || news.lead || this.createExcerpt(news.content),
+      premiumContent: null,
+      contentLocked: true,
+      hasPremiumAccess: false,
+      requiredPlan: 'premium',
+    };
+  }
+
+  private async hasPremiumAccess(news: News, viewer?: { id: number; role: string } | null) {
+    if (!viewer) return false;
+    if (viewer.role === 'admin') return true;
+    if (news.authorId === viewer.id) return true;
+
+    const subscription = await this.subscriptionRepository.findOne({ where: { userId: viewer.id } });
+    if (!subscription || subscription.planType !== 'premium') return false;
+    if (subscription.status === 'ACTIVE') return true;
+    if (subscription.status !== 'CANCELED') return false;
+    if (!subscription.endDate) return false;
+    return new Date(subscription.endDate) >= new Date();
+  }
+
+  private createExcerpt(content: string) {
+    return content.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 420);
+  }
+
+  private normalizePremiumContent(content: CreateNewsDto['premiumContent'] | UpdateNewsDto['premiumContent']) {
+    if (!content) return null;
+    const keyPoints = (content.keyPoints || []).map((item) => item.trim()).filter(Boolean);
+    const editorComment = content.editorComment?.trim() || '';
+    const relatedLinks = (content.relatedLinks || [])
+      .map((link) => ({ title: link.title?.trim() || '', url: link.url?.trim() || '' }))
+      .filter((link) => link.title || link.url);
+    if (!keyPoints.length && !editorComment && !relatedLinks.length) return null;
+    return { keyPoints, editorComment, relatedLinks };
   }
 
   async incrementViewCount(id: number) {

@@ -191,6 +191,8 @@ export default function AdminNewsCreatePage() {
     slug: '',
     tags: [] as string[],
     scheduledAt: '',
+    isPremium: false,
+    premiumExcerpt: '',
   });
 
   const [premiumContent, setPremiumContent] = useState({
@@ -350,7 +352,10 @@ export default function AdminNewsCreatePage() {
           slug: news.slug || '',
           tags: Array.isArray(news.tags) ? news.tags.map((tag: { name?: string }) => tag.name).filter(Boolean) : [],
           scheduledAt: news.scheduledAt || '',
+          isPremium: Boolean(news.isPremium),
+          premiumExcerpt: news.premiumExcerpt || '',
         });
+        if (news.premiumContent) setPremiumContent(news.premiumContent);
         setSourceReferences(news.sourceReferences?.length ? news.sourceReferences : [{ title: '', url: '', source: '', type: 'news', memo: '' }]);
         setServerDraftId(news.id);
         setLastSaved(news.updatedAt ? new Date(news.updatedAt) : null);
@@ -506,6 +511,7 @@ export default function AdminNewsCreatePage() {
     status: 'draft',
     categoryId: form.categoryId ? +form.categoryId : null,
     sourceReferences: sourceReferences.filter((source) => source.title.trim() || source.url.trim() || source.memo.trim()),
+    premiumContent: form.isPremium ? premiumContent : null,
   });
 
   const handleManualSave = async () => {
@@ -554,6 +560,7 @@ export default function AdminNewsCreatePage() {
         title: status === 'draft' ? (form.title.trim() || '제목 없는 임시글') : form.title,
         content: status === 'draft' ? (form.content.trim() || '<p></p>') : form.content,
         sourceReferences: sourceReferences.filter((source) => source.title.trim() || source.url.trim() || source.memo.trim()),
+        premiumContent: form.isPremium ? premiumContent : null,
         status,
         categoryId: form.categoryId ? +form.categoryId : null,
       };
@@ -752,6 +759,34 @@ export default function AdminNewsCreatePage() {
 
   const premiumContentSection = (
     <div className="order-[10] bg-gray-800 border border-yellow-600/30 rounded-xl p-4 flex flex-col gap-4">
+      <div className="flex items-center justify-between gap-3 rounded-xl border border-yellow-500/20 bg-yellow-500/10 p-3">
+        <div>
+          <p className="text-sm font-semibold text-yellow-300">프리미엄 기사</p>
+          <p className="mt-1 text-xs text-gray-400">켜면 프리미엄 구독자만 전체 본문과 추가 콘텐츠를 볼 수 있습니다.</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setForm((prev) => ({ ...prev, isPremium: !prev.isPremium }))}
+          className={`h-6 w-11 rounded-full px-0.5 transition ${form.isPremium ? 'bg-yellow-500' : 'bg-gray-700'}`}
+          aria-label="프리미엄 기사 설정"
+        >
+          <span className={`block h-5 w-5 rounded-full bg-white transition ${form.isPremium ? 'translate-x-5' : 'translate-x-0'}`} />
+        </button>
+      </div>
+
+      {form.isPremium && (
+        <div>
+          <label className="text-xs text-gray-500 mb-1 block">비구독자 공개 미리보기</label>
+          <textarea
+            value={form.premiumExcerpt}
+            onChange={(e) => setForm({ ...form, premiumExcerpt: e.target.value })}
+            placeholder="프리미엄 구독 전에도 보여줄 도입부나 요약을 입력하세요. 비워두면 리드문 또는 본문 일부가 사용됩니다."
+            rows={3}
+            className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 outline-none focus:ring-2 focus:ring-yellow-500 resize-none"
+          />
+        </div>
+      )}
+
       <div className="flex items-center gap-2">
         <span className="text-xs px-2 py-0.5 bg-yellow-500/20 text-yellow-400 rounded-full font-medium">구독자 전용</span>
         <span className="text-sm text-gray-500">뉴스레터에만 포함되는 추가 콘텐츠</span>

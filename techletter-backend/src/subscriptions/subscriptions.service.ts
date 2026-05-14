@@ -52,10 +52,13 @@ export class SubscriptionsService {
   // 구독 생성 (최초 구독)
   async subscribe(
     userId: number,
-    planType: 'daily' | 'weekly' | 'all',
+    planType: PlanType,
     paymentMethodBrand: string,
     paymentMethodLast4: string,
   ): Promise<Subscription> {
+    if (!this.isSupportedPlan(planType)) {
+      throw new BadRequestException('지원하지 않는 구독 플랜입니다.');
+    }
     const existing = await this.subscriptionRepo.findOne({ where: { userId } });
     if (existing && existing.status === 'ACTIVE') {
       throw new BadRequestException('이미 구독 중입니다.');
@@ -77,10 +80,13 @@ export class SubscriptionsService {
       existing.startDate = formatDate(today);
       existing.endDate = formatDate(endDate);
       existing.nextPaymentDate = formatDate(nextPaymentDate);
+      existing.billingCycle = 'monthly';
+      existing.autoRenew = true;
+      existing.cancelAtPeriodEnd = false;
       existing.paymentMethodBrand = paymentMethodBrand;
       existing.paymentMethodLast4 = paymentMethodLast4;
-      existing.dailyActive = planType === 'daily' || planType === 'all';
-      existing.weeklyActive = planType === 'weekly' || planType === 'all';
+      existing.dailyActive = planType === 'daily' || planType === 'all' || planType === 'premium';
+      existing.weeklyActive = planType === 'weekly' || planType === 'all' || planType === 'premium';
       await this.subscriptionRepo.save(existing);
       await this.createPaymentRecord(existing, today);
       return existing;
@@ -93,10 +99,13 @@ export class SubscriptionsService {
       startDate: formatDate(today),
       endDate: formatDate(endDate),
       nextPaymentDate: formatDate(nextPaymentDate),
+      billingCycle: 'monthly',
+      autoRenew: true,
+      cancelAtPeriodEnd: false,
       paymentMethodBrand,
       paymentMethodLast4,
-      dailyActive: planType === 'daily' || planType === 'all',
-      weeklyActive: planType === 'weekly' || planType === 'all',
+      dailyActive: planType === 'daily' || planType === 'all' || planType === 'premium',
+      weeklyActive: planType === 'weekly' || planType === 'all' || planType === 'premium',
     });
 
     await this.subscriptionRepo.save(subscription);
@@ -110,6 +119,7 @@ export class SubscriptionsService {
       daily: 2900,
       weekly: 1900,
       all: 3900,
+      premium: 9900,
     };
 
     const payment = this.paymentRepo.create({
@@ -135,6 +145,8 @@ export class SubscriptionsService {
       throw new BadRequestException('구독 중인 서비스가 없습니다.');
     }
     subscription.status = 'CANCELED';
+    subscription.autoRenew = false;
+    subscription.cancelAtPeriodEnd = true;
     return this.subscriptionRepo.save(subscription);
   }
 
@@ -146,6 +158,8 @@ export class SubscriptionsService {
     }
 
     subscription.status = 'ACTIVE';
+    subscription.autoRenew = true;
+    subscription.cancelAtPeriodEnd = false;
 
     const today = new Date();
     const endDate = new Date(subscription.endDate!);
@@ -289,7 +303,7 @@ export class SubscriptionsService {
   }
 
   async updateAdminPlan(subscriptionId: number, planType: PlanType): Promise<Subscription> {
-    if (!['daily', 'weekly', 'all'].includes(planType)) {
+    if (!this.isSupportedPlan(planType)) {
       throw new BadRequestException('변경할 수 없는 구독 플랜입니다.');
     }
 
@@ -300,9 +314,13 @@ export class SubscriptionsService {
     if (!subscription) throw new NotFoundException('구독 정보를 찾을 수 없습니다.');
 
     subscription.planType = planType;
-    subscription.dailyActive = planType === 'daily' || planType === 'all';
-    subscription.weeklyActive = planType === 'weekly' || planType === 'all';
+    subscription.dailyActive = planType === 'daily' || planType === 'all' || planType === 'premium';
+    subscription.weeklyActive = planType === 'weekly' || planType === 'all' || planType === 'premium';
     return this.subscriptionRepo.save(subscription);
+  }
+
+  private isSupportedPlan(planType: PlanType): boolean {
+    return ['daily', 'weekly', 'all', 'premium'].includes(planType);
   }
 
   async updateAdminMemo(subscriptionId: number, adminMemo: string): Promise<Subscription> {
