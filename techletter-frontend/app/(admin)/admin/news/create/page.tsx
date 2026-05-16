@@ -11,6 +11,23 @@ interface Category {
   slug: string;
 }
 
+interface CurrentUser {
+  id: number;
+  email: string;
+  role: string;
+  nickname: string;
+}
+
+interface ReporterProfile {
+  id: number;
+  realName: string;
+  organization: string;
+  bio: string;
+  portfolioUrl?: string | null;
+  status: 'pending' | 'approved' | 'rejected';
+  rejectedReason?: string | null;
+}
+
 interface AiSeoResult {
   score: number;
   items: { label: string; ok: boolean; suggestion: string }[];
@@ -89,6 +106,17 @@ export default function AdminNewsCreatePage() {
   const [showPreview, setShowPreview] = useState(false);
   const [previewMode, setPreviewMode] = useState<'pc' | 'mobile'>('pc');
   const thumbnailRef = useRef<HTMLInputElement>(null);
+  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
+  const [reporterProfile, setReporterProfile] = useState<ReporterProfile | null>(null);
+  const [reporterGateLoading, setReporterGateLoading] = useState(true);
+  const [reporterApplyLoading, setReporterApplyLoading] = useState(false);
+  const [reporterApplyError, setReporterApplyError] = useState('');
+  const [reporterApplyForm, setReporterApplyForm] = useState({
+    realName: '',
+    organization: '',
+    bio: '',
+    portfolioUrl: '',
+  });
 
   // 자동 임시저장
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
@@ -130,6 +158,28 @@ export default function AdminNewsCreatePage() {
   );
 
   useEffect(() => {
+    let mounted = true;
+    Promise.all([
+      api.get('/users/me'),
+      api.get('/reporters/me').catch(() => ({ data: null })),
+    ])
+      .then(([userRes, reporterRes]) => {
+        if (!mounted) return;
+        setCurrentUser(userRes.data);
+        setReporterProfile(reporterRes.data);
+        if (reporterRes.data?.status === 'rejected') {
+          setReporterApplyForm({
+            realName: reporterRes.data.realName || '',
+            organization: reporterRes.data.organization || '',
+            bio: reporterRes.data.bio || '',
+            portfolioUrl: reporterRes.data.portfolioUrl || '',
+          });
+        }
+      })
+      .finally(() => {
+        if (mounted) setReporterGateLoading(false);
+      });
+
     api.get('/categories').then(res => setCategories(res.data)).catch(() => {});
     const saved = localStorage.getItem('news_draft');
     if (saved) {
@@ -143,6 +193,7 @@ export default function AdminNewsCreatePage() {
         localStorage.removeItem('news_draft');
       } catch {}
     }
+    return () => { mounted = false; };
   }, []);
 
   useEffect(() => { setHasUnsaved(true); }, [form, premiumContent, newsletterOption]);
@@ -301,6 +352,21 @@ export default function AdminNewsCreatePage() {
     }
   };
 
+  const handleReporterApply = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setReporterApplyLoading(true);
+    setReporterApplyError('');
+    try {
+      const res = await api.post('/reporters/apply', reporterApplyForm);
+      setReporterProfile(res.data);
+      alert('기자 인증 신청이 접수되었습니다. 관리자 승인 후 기사 작성이 가능합니다.');
+    } catch (err: any) {
+      setReporterApplyError(err.response?.data?.message || '기자 인증 신청에 실패했습니다.');
+    } finally {
+      setReporterApplyLoading(false);
+    }
+  };
+
   const handleInterviewAnalyze = async () => {
     if (!interviewFile) { alert('인터뷰 음성 파일을 선택해 주세요.'); return; }
     setAiLoading('interview');
@@ -341,6 +407,117 @@ export default function AdminNewsCreatePage() {
   const seoItems = aiSeoResult?.items.length ? aiSeoResult.items : basicSeoItems;
   const seoColor = seoScore >= 80 ? 'text-emerald-400' : seoScore >= 50 ? 'text-yellow-400' : 'text-red-400';
   const seoBarColor = seoScore >= 80 ? 'bg-emerald-500' : seoScore >= 50 ? 'bg-yellow-500' : 'bg-red-500';
+  const canWriteNews = currentUser?.role === 'admin' || currentUser?.role === 'reporter' || reporterProfile?.status === 'approved';
+
+  if (reporterGateLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gray-950 text-sm text-gray-500">
+        권한 확인 중...
+      </div>
+    );
+  }
+
+  if (!canWriteNews) {
+    const isPending = reporterProfile?.status === 'pending';
+    const isRejected = reporterProfile?.status === 'rejected';
+
+    return (
+      <div className="min-h-screen bg-gray-950 px-4 py-10 text-white">
+        <div className="mx-auto w-full max-w-2xl rounded-lg border border-gray-800 bg-gray-900 p-8 shadow">
+          <button
+            type="button"
+            onClick={() => router.push('/mypage')}
+            className="mb-6 text-sm text-blue-400 hover:text-blue-300"
+          >
+            마이페이지로 돌아가기
+          </button>
+
+          <h1 className="text-2xl font-bold">기자 인증이 필요합니다</h1>
+          <p className="mt-2 text-sm leading-relaxed text-gray-400">
+            회원가입은 일반 계정으로 진행하고, 기사 작성 권한은 이 화면에서 별도로 신청합니다.
+            승인되면 기사 작성과 관리 기능을 사용할 수 있습니다.
+          </p>
+
+          {isPending ? (
+            <div className="mt-8 rounded-lg border border-yellow-700 bg-yellow-950/40 p-5 text-sm text-yellow-200">
+              기자 인증 신청이 접수되어 관리자 승인을 기다리고 있습니다.
+            </div>
+          ) : (
+            <>
+              {isRejected && (
+                <div className="mt-8 rounded-lg border border-red-800 bg-red-950/40 p-4 text-sm text-red-200">
+                  이전 신청이 반려되었습니다.
+                  {reporterProfile?.rejectedReason && (
+                    <div className="mt-2 text-red-100">사유: {reporterProfile.rejectedReason}</div>
+                  )}
+                </div>
+              )}
+
+              {reporterApplyError && (
+                <div className="mt-6 rounded-lg bg-red-950 p-3 text-sm text-red-300">
+                  {reporterApplyError}
+                </div>
+              )}
+
+              <form onSubmit={handleReporterApply} className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-sm text-gray-300">실명</label>
+                  <input
+                    type="text"
+                    value={reporterApplyForm.realName}
+                    onChange={(e) => setReporterApplyForm({ ...reporterApplyForm, realName: e.target.value })}
+                    className="w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-2.5 text-sm text-white outline-none focus:ring-2 focus:ring-blue-500"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-sm text-gray-300">소속/매체명</label>
+                  <input
+                    type="text"
+                    value={reporterApplyForm.organization}
+                    onChange={(e) => setReporterApplyForm({ ...reporterApplyForm, organization: e.target.value })}
+                    className="w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-2.5 text-sm text-white outline-none focus:ring-2 focus:ring-blue-500"
+                    required
+                  />
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="mb-1 block text-sm text-gray-300">포트폴리오 URL</label>
+                  <input
+                    type="url"
+                    value={reporterApplyForm.portfolioUrl}
+                    onChange={(e) => setReporterApplyForm({ ...reporterApplyForm, portfolioUrl: e.target.value })}
+                    className="w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-2.5 text-sm text-white outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="https://"
+                  />
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="mb-1 block text-sm text-gray-300">기자 소개 및 신청 사유</label>
+                  <textarea
+                    value={reporterApplyForm.bio}
+                    onChange={(e) => setReporterApplyForm({ ...reporterApplyForm, bio: e.target.value })}
+                    className="min-h-32 w-full resize-none rounded-lg border border-gray-700 bg-gray-800 px-4 py-2.5 text-sm text-white outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="취재 분야, 경력, 작성하고 싶은 기사 주제를 적어주세요."
+                    required
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={reporterApplyLoading}
+                  className="rounded-lg bg-blue-600 py-3 text-sm font-medium text-white transition hover:bg-blue-700 disabled:opacity-50 sm:col-span-2"
+                >
+                  {reporterApplyLoading ? '신청 중...' : isRejected ? '기자 인증 다시 신청' : '기자 인증 신청'}
+                </button>
+              </form>
+            </>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen transition-colors duration-200 pb-10">
