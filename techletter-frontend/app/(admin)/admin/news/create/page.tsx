@@ -168,6 +168,7 @@ export default function AdminNewsCreatePage() {
     editorComment: '',
     relatedLinks: [{ title: '', url: '' }],
   });
+  const [isPremium, setIsPremium] = useState(false);
 
   const [newsletterOption, setNewsletterOption] = useState({
     enabled: false,
@@ -264,6 +265,7 @@ export default function AdminNewsCreatePage() {
       form,
       premiumContent,
       newsletterOption,
+      isPremium,
       savedAt: new Date().toISOString(),
     }));
     if (key !== LEGACY_DRAFT_KEY) localStorage.removeItem(LEGACY_DRAFT_KEY);
@@ -271,7 +273,7 @@ export default function AdminNewsCreatePage() {
     setHasUnsaved(false);
     refreshDrafts();
     return true;
-  }, [draftKey, form, premiumContent, newsletterOption, refreshDrafts]);
+  }, [draftKey, form, premiumContent, newsletterOption, isPremium, refreshDrafts]);
 
   const loadDraft = (key: string) => {
     const raw = localStorage.getItem(key);
@@ -284,6 +286,7 @@ export default function AdminNewsCreatePage() {
       setForm(parsed.form);
       if (parsed.premiumContent) setPremiumContent(parsed.premiumContent);
       if (parsed.newsletterOption) setNewsletterOption(parsed.newsletterOption);
+      if (typeof parsed.isPremium === 'boolean') setIsPremium(parsed.isPremium);
       setDraftKey(key);
       setLastSaved(parsed.savedAt ? new Date(parsed.savedAt) : null);
       setHasUnsaved(false);
@@ -331,6 +334,7 @@ export default function AdminNewsCreatePage() {
           setForm(parsed.form);
           if (parsed.premiumContent) setPremiumContent(parsed.premiumContent);
           if (parsed.newsletterOption) setNewsletterOption(parsed.newsletterOption);
+          if (typeof parsed.isPremium === 'boolean') setIsPremium(parsed.isPremium);
           setLastSaved(parsed.savedAt ? new Date(parsed.savedAt) : null);
           setHasUnsaved(false);
         }
@@ -423,7 +427,7 @@ export default function AdminNewsCreatePage() {
     }
     setLoading(true); setError('');
     try {
-      const res = await api.post('/news', { ...form, status, categoryId: form.categoryId ? +form.categoryId : null });
+      const res = await api.post('/news', { ...form, status, categoryId: form.categoryId ? +form.categoryId : null, isPremium });
       if (newsletterOption.enabled && status !== 'draft') {
         await api.post('/newsletter/send', {
           title: form.title, newsId: res.data.id, type: newsletterOption.type,
@@ -598,7 +602,40 @@ export default function AdminNewsCreatePage() {
   const seoItems = aiSeoResult?.items.length ? aiSeoResult.items : basicSeoItems;
   const seoColor = seoScore >= 80 ? 'text-emerald-400' : seoScore >= 50 ? 'text-yellow-400' : 'text-red-400';
   const seoBarColor = seoScore >= 80 ? 'bg-emerald-500' : seoScore >= 50 ? 'bg-yellow-500' : 'bg-red-500';
+
+  const displayedSeoScore = Math.max(0, Math.min(100, Math.round((seoItems.filter((item) => item.ok).length / seoItems.length) * 100)));
+  const displayedSeoBarColor = displayedSeoScore >= 80 ? 'bg-emerald-500' : displayedSeoScore >= 50 ? 'bg-yellow-500' : 'bg-red-500';
+  const displayedSeoColor = displayedSeoScore >= 80 ? 'text-emerald-400' : displayedSeoScore >= 50 ? 'text-yellow-400' : 'text-red-400';
+  const seoStatusLabel = displayedSeoScore >= 80 ? '좋음' : displayedSeoScore >= 50 ? '보통' : '개선 필요';
+  const seoReport = getSeoReport(form);
+  const metaPreview = form.metaDescription || form.lead || form.content.replace(/<[^>]*>/g, '').slice(0, 155);
+
   const canWriteNews = currentUser?.role === 'admin' || currentUser?.role === 'reporter' || reporterProfile?.status === 'approved';
+
+  const premiumContentSection = (
+    <section className="order-[2] rounded-3xl border border-gray-800 bg-gray-900 p-5 shadow-sm">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-sm font-semibold text-white">프리미엄 콘텐츠 여부</p>
+          <p className="text-xs text-gray-400 mt-1">유료 기사 또는 구독자 전용 콘텐츠인지 선택해 주세요.</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setIsPremium((prev) => !prev)}
+          className={`relative inline-flex h-10 w-20 items-center rounded-full transition ${isPremium ? 'bg-emerald-500' : 'bg-gray-700'}`}
+          aria-pressed={isPremium}
+        >
+          <span className={`absolute left-1 top-1 h-8 w-8 rounded-full bg-white shadow transition-transform ${isPremium ? 'translate-x-10' : 'translate-x-0'}`}></span>
+        </button>
+      </div>
+      <div className="mt-4 flex flex-wrap items-center gap-3">
+        <span className={`rounded-full px-3 py-1 text-xs font-medium ${isPremium ? 'bg-emerald-600 text-emerald-100' : 'bg-gray-800 text-gray-300'}`}>
+          {isPremium ? '프리미엄 콘텐츠' : '무료 공개 콘텐츠'}
+        </span>
+        <p className="text-xs text-gray-500">프리미엄으로 설정하면 구독자 전용 또는 유료 기사 표시로 활용할 수 있습니다.</p>
+      </div>
+    </section>
+  );
 
   if (reporterGateLoading) {
     return (
