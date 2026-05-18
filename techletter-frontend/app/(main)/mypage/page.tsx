@@ -106,7 +106,8 @@ const formatDate = (dateStr: string | null) => {
   return `${d.getFullYear()}년 ${d.getMonth() + 1}월 ${d.getDate()}일`;
 };
 
-function AdminShortcutIcon({ type }: { type: 'write' | 'manage' | 'stats' }) {
+// 👇 수정된 부분: 'approve' 타입이 추가되었습니다!
+function AdminShortcutIcon({ type }: { type: 'write' | 'manage' | 'stats' | 'approve' }) {
   const commonProps = {
     width: 22,
     height: 22,
@@ -136,6 +137,16 @@ function AdminShortcutIcon({ type }: { type: 'write' | 'manage' | 'stats' }) {
         <path d="M3 6h.01" />
         <path d="M3 12h.01" />
         <path d="M3 18h.01" />
+      </svg>
+    );
+  }
+
+  // 👇 추가된 '기자 승인' 아이콘
+  if (type === 'approve') {
+    return (
+      <svg {...commonProps}>
+        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+        <polyline points="22 4 12 14.01 9 11.01" />
       </svg>
     );
   }
@@ -469,6 +480,9 @@ export default function MyPage() {
       alert(err.response?.data?.message || '기자 인증 신청에 실패했습니다.');
     } finally {
       setReporterApplyLoading(false);
+    }
+  };
+  
   const handleChangePassword = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setPasswordError('');
@@ -819,15 +833,16 @@ export default function MyPage() {
             <p className="text-[11px] font-semibold text-blue-500 dark:text-blue-400 mb-3">
               {isAdmin ? '관리자' : '기자'}
             </p>
+            {/* 👇 수정된 부분: icon 값들이 영단어로 통일되고 끝에 as const가 추가되었습니다! */}
             <div className={`grid gap-2 ${isAdmin ? 'grid-cols-4' : 'grid-cols-1'}`}>
               {(isAdmin ? [
-                { href: '/admin/news/create', icon: '✏️', label: '뉴스 작성' },
-                { href: '/admin/news',        icon: '📋', label: '뉴스 관리' },
-                { href: '/admin/reporters',   icon: '✅', label: '기자 승인' },
-                { href: '/admin/stats',       icon: '📊', label: '통계 분석' },
-              ] : [
-                { href: '/admin/news/create', icon: '✏️', label: '기사 작성' },
-              ]).map(({ href, icon, label }) => (
+                { href: '/admin/news/create', icon: 'write', label: '뉴스 작성' },
+                { href: '/admin/news',        icon: 'manage', label: '뉴스 관리' },
+                { href: '/admin/reporters',   icon: 'approve', label: '기자 승인' },
+                { href: '/admin/stats',       icon: 'stats', label: '통계 분석' },
+              ] as const : [
+                { href: '/admin/news/create', icon: 'write', label: '기사 작성' },
+              ] as const).map(({ href, icon, label }) => (
                 <Link
                   key={href}
                   href={href}
