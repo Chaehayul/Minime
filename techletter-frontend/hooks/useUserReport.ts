@@ -17,6 +17,13 @@ interface ReportData {
   topCategories: CategoryInfo[];
 }
 
+const emptyReport: ReportData = {
+  monthlyReadCount: 0,
+  bookmarkCount: 0,
+  likeCount: 0,
+  topCategories: [],
+};
+
 export function useUserReport() {
   const [report, setReport] = useState<ReportData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -32,6 +39,11 @@ export function useUserReport() {
         // 3. 받아온 데이터를 상태에 저장합니다.
         setReport(res.data);
       } catch (err: any) {
+        if (err?.response?.status === 404) {
+          setReport(emptyReport);
+          setError(null);
+          return;
+        }
         console.error("통계 데이터를 불러오지 못했습니다.", err);
         setError(err);
       } finally {

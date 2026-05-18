@@ -1,11 +1,12 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useTheme } from 'next-themes';
 import api, { getImageUrl } from '@/lib/api';
+import ProfileAvatar from '@/components/common/ProfileAvatar';
 // 실제 파일 경로에 맞게 필요시 수정하세요
 import { useUserReport } from '@/hooks/useUserReport';
 
@@ -104,6 +105,50 @@ const formatDate = (dateStr: string | null) => {
   const d = new Date(dateStr);
   return `${d.getFullYear()}년 ${d.getMonth() + 1}월 ${d.getDate()}일`;
 };
+
+function AdminShortcutIcon({ type }: { type: 'write' | 'manage' | 'stats' }) {
+  const commonProps = {
+    width: 22,
+    height: 22,
+    viewBox: '0 0 24 24',
+    fill: 'none',
+    stroke: 'currentColor',
+    strokeWidth: 2,
+    strokeLinecap: 'round' as const,
+    strokeLinejoin: 'round' as const,
+  };
+
+  if (type === 'write') {
+    return (
+      <svg {...commonProps}>
+        <path d="M12 20h9" />
+        <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+      </svg>
+    );
+  }
+
+  if (type === 'manage') {
+    return (
+      <svg {...commonProps}>
+        <path d="M8 6h13" />
+        <path d="M8 12h13" />
+        <path d="M8 18h13" />
+        <path d="M3 6h.01" />
+        <path d="M3 12h.01" />
+        <path d="M3 18h.01" />
+      </svg>
+    );
+  }
+
+  return (
+    <svg {...commonProps}>
+      <path d="M3 3v18h18" />
+      <path d="M7 16v-5" />
+      <path d="M12 16V7" />
+      <path d="M17 16v-8" />
+    </svg>
+  );
+}
 
 function SubscriptionSection({
   subscription,
@@ -290,6 +335,15 @@ export default function MyPage() {
     portfolioUrl: '',
   });
 
+  const [passwords, setPasswords] = useState({
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: '',
+  });
+  const [passwordLoading, setPasswordLoading] = useState(false);
+  const [passwordError, setPasswordError] = useState('');
+  const [passwordSuccess, setPasswordSuccess] = useState('');
+
   const { report } = useUserReport();
 
   useEffect(() => {
@@ -338,6 +392,18 @@ export default function MyPage() {
   const handleLogout = () => {
     localStorage.removeItem('accessToken');
     router.push('/login');
+  };
+
+  const handleDeleteAccount = async () => {
+    if (!confirm('정말 탈퇴하시겠습니까? 이 작업은 되돌릴 수 없으며 모든 데이터가 삭제됩니다.')) return;
+    try {
+      await api.delete('/users/me');
+      alert('회원 탈퇴가 완료되었습니다. 이용해주셔서 감사합니다.');
+      localStorage.removeItem('accessToken');
+      router.push('/login');
+    } catch (err: any) {
+      alert(err.response?.data?.message || '회원 탈퇴에 실패했습니다.');
+    }
   };
 
   const handleUnsubscribe = async () => {
@@ -403,6 +469,33 @@ export default function MyPage() {
       alert(err.response?.data?.message || '기자 인증 신청에 실패했습니다.');
     } finally {
       setReporterApplyLoading(false);
+  const handleChangePassword = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setPasswordError('');
+    setPasswordSuccess('');
+
+    if (passwords.newPassword !== passwords.confirmPassword) {
+      setPasswordError('새 비밀번호가 일치하지 않습니다.');
+      return;
+    }
+
+    if (passwords.newPassword.length < 8) {
+      setPasswordError('새 비밀번호는 8자 이상이어야 합니다.');
+      return;
+    }
+
+    setPasswordLoading(true);
+    try {
+      await api.patch('/users/me/password', {
+        currentPassword: passwords.currentPassword,
+        newPassword: passwords.newPassword,
+      });
+      setPasswordSuccess('비밀번호가 성공적으로 변경되었습니다.');
+      setPasswords({ currentPassword: '', newPassword: '', confirmPassword: '' });
+    } catch (err: any) {
+      setPasswordError(err.response?.data?.message || '비밀번호 변경에 실패했습니다.');
+    } finally {
+      setPasswordLoading(false);
     }
   };
 
@@ -431,7 +524,7 @@ export default function MyPage() {
 
   return (
     // 전체 배경을 부드러운 다크그레이(#121212)로 변경
-    <div className="min-h-screen bg-gray-50 dark:bg-[#121212] transition-colors">
+    <div className="min-h-screen bg-gray-50 dark:bg-[#121212] transition-colors pb-32">
 
       {/* ── 헤더 ── */}
       <header className="sticky top-0 z-50 bg-white/80 dark:bg-[#121212]/80 backdrop-blur-md border-b border-gray-100 dark:border-[#2E2E2E] transition-colors">
@@ -480,7 +573,7 @@ export default function MyPage() {
             </div>
 
             {editMode && (
-              <div className="mt-4 pt-4 border-t border-gray-100 dark:border-[#2E2E2E] flex flex-col gap-3">
+              <div className="mt-4 pt-4 border-t border-gray-100 dark:border-[#2E2E2E] flex flex-col gap-4">
                 <div>
                   <label className="text-xs text-gray-400 dark:text-gray-400 mb-1.5 block">닉네임 변경</label>
                   <div className="flex gap-2">
@@ -492,7 +585,6 @@ export default function MyPage() {
                                  rounded-xl px-3 py-2 text-sm text-gray-900 dark:text-white outline-none
                                  focus:ring-2 focus:ring-gray-900 dark:focus:ring-white transition min-w-0"
                     />
-                    {/* 저장 버튼에 튀어 나감 방지용 flex-shrink-0 및 whitespace-nowrap 추가 */}
                     <button
                       onClick={handleEditNickname}
                       disabled={editLoading || newNickname === user?.nickname || !newNickname.trim()}
@@ -502,6 +594,77 @@ export default function MyPage() {
                       {editLoading ? '저장 중...' : '저장'}
                     </button>
                   </div>
+                </div>
+
+                <div className="bg-gray-50 dark:bg-[#121212] border border-gray-200 dark:border-[#3A3A3A] rounded-2xl p-4">
+                  <div className="mb-3 flex items-center justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-semibold text-gray-900 dark:text-white">비밀번호 변경</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">현재 비밀번호와 새로운 비밀번호를 입력하세요.</p>
+                    </div>
+                  </div>
+
+                  {passwordError && (
+                    <div className="mb-3 rounded-xl bg-red-500/10 border border-red-500/20 px-3 py-2 text-sm text-red-400">
+                      {passwordError}
+                    </div>
+                  )}
+                  {passwordSuccess && (
+                    <div className="mb-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 px-3 py-2 text-sm text-emerald-300">
+                      {passwordSuccess}
+                    </div>
+                  )}
+
+                  <form onSubmit={handleChangePassword} className="flex flex-col gap-3">
+                    <div>
+                      <label className="text-xs text-gray-500 dark:text-gray-400 mb-1.5 block">현재 비밀번호</label>
+                      <input
+                        type="password"
+                        value={passwords.currentPassword}
+                        onChange={(e) => setPasswords({ ...passwords, currentPassword: e.target.value })}
+                        className="w-full bg-white dark:bg-[#0E0E0E] border border-gray-200 dark:border-[#2F2F2F] rounded-xl px-3 py-2 text-sm text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-white transition"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-500 dark:text-gray-400 mb-1.5 block">새 비밀번호 (8자 이상)</label>
+                      <input
+                        type="password"
+                        value={passwords.newPassword}
+                        onChange={(e) => setPasswords({ ...passwords, newPassword: e.target.value })}
+                        className="w-full bg-white dark:bg-[#0E0E0E] border border-gray-200 dark:border-[#2F2F2F] rounded-xl px-3 py-2 text-sm text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-white transition"
+                        required
+                        minLength={8}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-500 dark:text-gray-400 mb-1.5 block">새 비밀번호 확인</label>
+                      <input
+                        type="password"
+                        value={passwords.confirmPassword}
+                        onChange={(e) => setPasswords({ ...passwords, confirmPassword: e.target.value })}
+                        className="w-full bg-white dark:bg-[#0E0E0E] border border-gray-200 dark:border-[#2F2F2F] rounded-xl px-3 py-2 text-sm text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-white transition"
+                        required
+                        minLength={8}
+                      />
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={passwordLoading}
+                      className="mt-2 w-full rounded-xl bg-blue-600 hover:bg-blue-700 text-white py-2.5 text-sm font-medium transition disabled:opacity-50"
+                    >
+                      {passwordLoading ? '변경 중...' : '비밀번호 변경'}
+                    </button>
+                  </form>
+                </div>
+                <div className="pt-6 mt-4 border-t border-gray-100 dark:border-[#2A2A2A] flex justify-center">
+                  <button
+                    onClick={handleDeleteAccount}
+                    className="flex items-center gap-2 px-4 py-2 text-xs font-medium text-gray-500 dark:text-gray-400 hover:text-red-500 dark:hover:text-red-400 bg-gray-50 hover:bg-red-50 dark:bg-[#1A1A1A] dark:hover:bg-red-950/30 rounded-lg transition-colors"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+                    <span>회원 탈퇴하기</span>
+                  </button>
                 </div>
               </div>
             )}
@@ -671,7 +834,9 @@ export default function MyPage() {
                   className="flex flex-col items-center gap-1.5 py-3 bg-white dark:bg-[#2A2A2A]
                              rounded-xl text-blue-600 dark:text-blue-300 hover:shadow-sm transition"
                 >
-                  <span className="text-lg">{icon}</span>
+                  <span className="flex h-7 w-7 items-center justify-center">
+                    <AdminShortcutIcon type={icon} />
+                  </span>
                   <span className="text-[11px] font-medium">{label}</span>
                 </Link>
               ))}
@@ -728,14 +893,22 @@ export default function MyPage() {
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
             <span className="font-bold text-sm text-gray-900 dark:text-white">구독 설정</span>
           </div>
-          {subscription ? (
-            <div className="flex flex-col gap-3">
+
+          {/* 1. 파일 위쪽에 만들어둔 '결제 상세 카드' 불러오기 */}
+          <SubscriptionSection
+            subscription={subscription}
+            onUnsubscribe={handleUnsubscribe}
+            onResubscribe={handleResubscribe}
+          />
+
+          {/* 2. 구독 중(ACTIVE)일 때만 뉴스레터 알림 토글 스위치 보여주기 */}
+          {subscription?.status === 'ACTIVE' && (
+            <div className="mt-5 pt-4 border-t border-gray-100 dark:border-[#2A2A2A] flex flex-col gap-3">
               <div className="flex justify-between items-center">
                 <div>
                   <div className="text-sm text-gray-900 dark:text-gray-200">데일리 뉴스레터</div>
                   <div className="text-xs text-gray-500">매일 오전 수신 중</div>
                 </div>
-                {/* 👇 가짜 스위치를 진짜 Toggle 컴포넌트로 교체! */}
                 <Toggle on={subscription.dailyActive ?? false} onToggle={() => handleToggleSubscription('dailyActive')} />
               </div>
               <div className="flex justify-between items-center">
@@ -743,20 +916,8 @@ export default function MyPage() {
                   <div className="text-sm text-gray-900 dark:text-gray-200">주간 뉴스레터</div>
                   <div className="text-xs text-gray-500">매주 월요일 수신 중</div>
                 </div>
-                {/* 👇 가짜 스위치를 진짜 Toggle 컴포넌트로 교체! */}
                 <Toggle on={subscription.weeklyActive ?? false} onToggle={() => handleToggleSubscription('weeklyActive')} />
               </div>
-              <button onClick={handleUnsubscribe} className="mt-2 text-sm text-red-500 dark:text-red-400 hover:text-red-600 dark:hover:text-red-300 transition text-left">
-                구독 해지
-              </button>
-            </div>
-          ) : (
-            <div className="flex flex-col gap-3">
-              <p className="text-sm text-gray-500">아직 구독하지 않았어요</p>
-              <button onClick={handleSubscribe}
-                className="w-full bg-gray-900 dark:bg-white text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-200 rounded-xl py-2.5 text-sm font-medium transition">
-                뉴스레터 구독하기
-              </button>
             </div>
           )}
         </div>

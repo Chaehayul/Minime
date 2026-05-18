@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import api, { getImageUrl } from '@/lib/api';
+import ProfileAvatar from '@/components/common/ProfileAvatar';
 
 interface News {
   id: number;
