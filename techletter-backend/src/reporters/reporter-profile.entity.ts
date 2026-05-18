@@ -45,7 +45,7 @@ export class ReporterProfile {
   @Column({ type: 'text', nullable: true })
   rejectedReason!: string | null;
 
-  @Column({ type: 'datetime', nullable: true })
+  @Column({ type: 'timestamp', nullable: true })
   approvedAt!: Date | null;
 
   @CreateDateColumn()

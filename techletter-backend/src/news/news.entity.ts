@@ -32,7 +32,7 @@ export class News {
   @Column({ nullable: true })
   subtitle!: string;
 
-  @Column({ type: 'longtext' })
+  @Column({ type: 'text' })
   content!: string;
 
   @Column({ nullable: true })
