@@ -38,7 +38,7 @@ export default function SignupPage() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center transition-colors duration-200">
+    <div className="flex min-h-screen items-center justify-center px-4 transition-colors duration-200">
       <div className="w-full max-w-md card-dark p-8 shadow">
         <Link href="/">
           <h1 className="mb-2 cursor-pointer text-center text-2xl font-bold text-gray-900 transition hover:opacity-80 dark:text-white">
@@ -46,7 +46,7 @@ export default function SignupPage() {
           </h1>
         </Link>
         <p className="mb-8 text-center text-sm text-gray-500 dark:text-gray-400">
-          IT 트렌드를 한눈에
+          관심 있는 IT 뉴스를 더 편하게 받아보세요
         </p>
 
         {error && (
@@ -57,9 +57,7 @@ export default function SignupPage() {
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <div>
-            <label className="mb-1 block text-sm text-gray-600 dark:text-gray-300">
-              닉네임
-            </label>
+            <label className="mb-1 block text-sm text-gray-600 dark:text-gray-300">닉네임</label>
             <input
               type="text"
               placeholder="닉네임"
@@ -71,9 +69,7 @@ export default function SignupPage() {
           </div>
 
           <div>
-            <label className="mb-1 block text-sm text-gray-600 dark:text-gray-300">
-              이메일
-            </label>
+            <label className="mb-1 block text-sm text-gray-600 dark:text-gray-300">이메일</label>
             <input
               type="email"
               placeholder="이메일 주소"
@@ -85,9 +81,7 @@ export default function SignupPage() {
           </div>
 
           <div>
-            <label className="mb-1 block text-sm text-gray-600 dark:text-gray-300">
-              비밀번호
-            </label>
+            <label className="mb-1 block text-sm text-gray-600 dark:text-gray-300">비밀번호</label>
             <input
               type="password"
               placeholder="비밀번호 (8자 이상)"
@@ -104,7 +98,7 @@ export default function SignupPage() {
             disabled={loading}
             className="w-full rounded-lg bg-blue-600 py-2.5 text-sm font-medium text-white transition hover:bg-blue-700 disabled:opacity-50"
           >
-            {loading ? '가입 중...' : '회원가입'}
+            {loading ? '가입 중...' : '일반 회원가입'}
           </button>
         </form>
 

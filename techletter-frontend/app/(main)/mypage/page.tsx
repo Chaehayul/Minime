@@ -17,6 +17,16 @@ interface User {
   role: string;
 }
 
+interface ReporterProfile {
+  id: number;
+  realName: string;
+  organization: string;
+  bio: string;
+  portfolioUrl?: string | null;
+  status: 'pending' | 'approved' | 'rejected';
+  rejectedReason?: string | null;
+}
+
 type SubscriptionStatus = 'NONE' | 'ACTIVE' | 'CANCELED' | 'EXPIRED' | 'PAYMENT_FAILED';
 
 interface Subscription {
@@ -308,6 +318,7 @@ export default function MyPage() {
 
   const [user, setUser] = useState<User | null>(null);
   const [subscription, setSubscription] = useState<Subscription | null>(null);
+  const [reporterProfile, setReporterProfile] = useState<ReporterProfile | null>(null);
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
   const [stats, setStats] = useState({ bookmarks: 0, likes: 0, comments: 0 });
   const [loading, setLoading] = useState(true);
@@ -315,6 +326,14 @@ export default function MyPage() {
   const [editMode, setEditMode] = useState(false);
   const [newNickname, setNewNickname] = useState('');
   const [editLoading, setEditLoading] = useState(false);
+  const [reporterApplyOpen, setReporterApplyOpen] = useState(false);
+  const [reporterApplyLoading, setReporterApplyLoading] = useState(false);
+  const [reporterApplyForm, setReporterApplyForm] = useState({
+    realName: '',
+    organization: '',
+    bio: '',
+    portfolioUrl: '',
+  });
 
   const [passwords, setPasswords] = useState({
     currentPassword: '',
@@ -331,13 +350,24 @@ export default function MyPage() {
     setMounted(true);
     const fetchData = async () => {
       try {
-        const [userRes, subRes, bookmarkRes] = await Promise.all([
+        const [userRes, subRes, bookmarkRes, reporterRes] = await Promise.all([
           api.get('/users/me'),
           api.get('/subscriptions/me').catch(() => ({ data: null })),
           api.get('/users/me/bookmarks').catch(() => ({ data: [] })),
+          api.get('/reporters/me').catch(() => ({ data: null })),
         ]);
         setUser(userRes.data);
         setSubscription(subRes.data);
+        setReporterProfile(reporterRes.data);
+        if (reporterRes.data?.status === 'rejected') {
+          setReporterApplyOpen(true);
+          setReporterApplyForm({
+            realName: reporterRes.data.realName || '',
+            organization: reporterRes.data.organization || '',
+            bio: reporterRes.data.bio || '',
+            portfolioUrl: reporterRes.data.portfolioUrl || '',
+          });
+        }
         const bookmarkList = bookmarkRes.data || [];
         setBookmarks(bookmarkList.slice(0, 3));
         setStats({
@@ -427,6 +457,18 @@ export default function MyPage() {
     }
   };
 
+  const handleReporterApply = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setReporterApplyLoading(true);
+    try {
+      const res = await api.post('/reporters/apply', reporterApplyForm);
+      setReporterProfile(res.data);
+      setReporterApplyOpen(false);
+      alert('기자 인증 신청이 접수되었습니다. 관리자 승인 후 기자 계정으로 전환됩니다.');
+    } catch (err: any) {
+      alert(err.response?.data?.message || '기자 인증 신청에 실패했습니다.');
+    } finally {
+      setReporterApplyLoading(false);
   const handleChangePassword = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setPasswordError('');
@@ -476,6 +518,9 @@ export default function MyPage() {
   const bookmarkCount = report?.bookmarkCount ?? 0;
   const likeCount = report?.likeCount ?? 0;
   const maxVal = Math.max(readCount, bookmarkCount, likeCount, 1);
+  const isReporter = user?.role === 'reporter';
+  const isAdmin = user?.role === 'admin';
+  const reporterStatus = reporterProfile?.status;
 
   return (
     // 전체 배경을 부드러운 다크그레이(#121212)로 변경
@@ -507,6 +552,12 @@ export default function MyPage() {
                     <span className="text-[10px] px-1.5 py-0.5 bg-blue-50 dark:bg-[#2A2A2A]
                                      text-blue-600 dark:text-blue-400 rounded-md font-semibold">
                       ADMIN
+                    </span>
+                  )}
+                  {user?.role === 'reporter' && (
+                    <span className="text-[10px] px-1.5 py-0.5 bg-emerald-50 dark:bg-emerald-950/40
+                                     text-emerald-600 dark:text-emerald-300 rounded-md font-semibold">
+                      REPORTER
                     </span>
                   )}
                 </div>
@@ -649,17 +700,134 @@ export default function MyPage() {
           )}
         </section>
 
-        {/* ── 2. 관리자 퀵메뉴 ── */}
-        {user?.role === 'admin' && (
+        {/* ── 2. 기자 인증 / 작성 메뉴 ── */}
+        {!isAdmin && (
+          <section className="bg-white dark:bg-[#1E1E1E] rounded-2xl border border-gray-100 dark:border-[#2E2E2E] p-5">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold text-gray-900 dark:text-white">기자 인증</p>
+                <p className="mt-1 text-xs leading-relaxed text-gray-500 dark:text-gray-400">
+                  승인되면 계정이 기자 권한으로 전환되고 기사 작성 메뉴가 열립니다.
+                </p>
+              </div>
+              {isReporter ? (
+                <span className="rounded-md bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-300">
+                  인증 완료
+                </span>
+              ) : reporterStatus === 'pending' ? (
+                <span className="rounded-md bg-yellow-50 px-2 py-1 text-[11px] font-semibold text-yellow-600 dark:bg-yellow-950/40 dark:text-yellow-300">
+                  승인 대기
+                </span>
+              ) : reporterStatus === 'rejected' ? (
+                <span className="rounded-md bg-red-50 px-2 py-1 text-[11px] font-semibold text-red-600 dark:bg-red-950/40 dark:text-red-300">
+                  반려
+                </span>
+              ) : (
+                <span className="rounded-md bg-gray-100 px-2 py-1 text-[11px] font-semibold text-gray-500 dark:bg-[#2A2A2A] dark:text-gray-400">
+                  미인증
+                </span>
+              )}
+            </div>
+
+            {isReporter ? (
+              <div className="mt-4 rounded-xl bg-emerald-50 p-4 text-sm text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-200">
+                기자 인증이 완료되어 기사 작성 권한이 활성화되었습니다.
+              </div>
+            ) : reporterStatus === 'pending' ? (
+              <div className="mt-4 rounded-xl bg-yellow-50 p-4 text-sm text-yellow-700 dark:bg-yellow-950/30 dark:text-yellow-200">
+                기자 인증 신청이 접수되어 관리자 승인을 기다리고 있습니다.
+              </div>
+            ) : (
+              <>
+                {reporterStatus === 'rejected' && (
+                  <div className="mt-4 rounded-xl bg-red-50 p-4 text-sm text-red-700 dark:bg-red-950/30 dark:text-red-200">
+                    이전 신청이 반려되었습니다.
+                    {reporterProfile?.rejectedReason && (
+                      <div className="mt-1">사유: {reporterProfile.rejectedReason}</div>
+                    )}
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => setReporterApplyOpen((v) => !v)}
+                  className="mt-4 w-full rounded-xl bg-gray-900 py-2.5 text-sm font-medium text-white transition hover:bg-gray-800 dark:bg-white dark:text-gray-900 dark:hover:bg-gray-200"
+                >
+                  {reporterApplyOpen ? '신청 폼 닫기' : reporterStatus === 'rejected' ? '기자 인증 다시 신청' : '기자 인증 신청하기'}
+                </button>
+
+                {reporterApplyOpen && (
+                  <form onSubmit={handleReporterApply} className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div>
+                      <label className="mb-1 block text-xs text-gray-500 dark:text-gray-400">실명</label>
+                      <input
+                        type="text"
+                        value={reporterApplyForm.realName}
+                        onChange={(e) => setReporterApplyForm({ ...reporterApplyForm, realName: e.target.value })}
+                        className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 outline-none focus:ring-2 focus:ring-gray-900 dark:border-[#3A3A3A] dark:bg-[#121212] dark:text-white dark:focus:ring-white"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-xs text-gray-500 dark:text-gray-400">소속/매체명</label>
+                      <input
+                        type="text"
+                        value={reporterApplyForm.organization}
+                        onChange={(e) => setReporterApplyForm({ ...reporterApplyForm, organization: e.target.value })}
+                        className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 outline-none focus:ring-2 focus:ring-gray-900 dark:border-[#3A3A3A] dark:bg-[#121212] dark:text-white dark:focus:ring-white"
+                        required
+                      />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="mb-1 block text-xs text-gray-500 dark:text-gray-400">포트폴리오 URL</label>
+                      <input
+                        type="url"
+                        value={reporterApplyForm.portfolioUrl}
+                        onChange={(e) => setReporterApplyForm({ ...reporterApplyForm, portfolioUrl: e.target.value })}
+                        className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 outline-none focus:ring-2 focus:ring-gray-900 dark:border-[#3A3A3A] dark:bg-[#121212] dark:text-white dark:focus:ring-white"
+                        placeholder="https://"
+                      />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="mb-1 block text-xs text-gray-500 dark:text-gray-400">기자 소개 및 신청 사유</label>
+                      <textarea
+                        value={reporterApplyForm.bio}
+                        onChange={(e) => setReporterApplyForm({ ...reporterApplyForm, bio: e.target.value })}
+                        className="min-h-28 w-full resize-none rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 outline-none focus:ring-2 focus:ring-gray-900 dark:border-[#3A3A3A] dark:bg-[#121212] dark:text-white dark:focus:ring-white"
+                        placeholder="취재 분야, 경력, 작성하고 싶은 기사 주제를 적어주세요."
+                        required
+                      />
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={reporterApplyLoading}
+                      className="rounded-xl bg-blue-600 py-2.5 text-sm font-medium text-white transition hover:bg-blue-700 disabled:opacity-50 sm:col-span-2"
+                    >
+                      {reporterApplyLoading ? '신청 중...' : '인증 신청 제출'}
+                    </button>
+                  </form>
+                )}
+              </>
+            )}
+          </section>
+        )}
+
+        {/* ── 3. 관리자/기자 퀵메뉴 ── */}
+        {(isAdmin || isReporter) && (
           <section className="bg-blue-50 dark:bg-[#1E2530] rounded-2xl border border-blue-100
                                dark:border-blue-900/40 p-4">
-            <p className="text-[11px] font-semibold text-blue-500 dark:text-blue-400 mb-3">관리자</p>
-            <div className="grid grid-cols-3 gap-2">
-              {[
-                { href: '/admin/news/create', icon: 'write' as const, label: '뉴스 작성' },
-                { href: '/admin/news',        icon: 'manage' as const, label: '뉴스 관리' },
-                { href: '/admin/stats',       icon: 'stats' as const, label: '통계 분석' },
-              ].map(({ href, icon, label }) => (
+            <p className="text-[11px] font-semibold text-blue-500 dark:text-blue-400 mb-3">
+              {isAdmin ? '관리자' : '기자'}
+            </p>
+            <div className={`grid gap-2 ${isAdmin ? 'grid-cols-4' : 'grid-cols-1'}`}>
+              {(isAdmin ? [
+                { href: '/admin/news/create', icon: '✏️', label: '뉴스 작성' },
+                { href: '/admin/news',        icon: '📋', label: '뉴스 관리' },
+                { href: '/admin/reporters',   icon: '✅', label: '기자 승인' },
+                { href: '/admin/stats',       icon: '📊', label: '통계 분석' },
+              ] : [
+                { href: '/admin/news/create', icon: '✏️', label: '기사 작성' },
+              ]).map(({ href, icon, label }) => (
                 <Link
                   key={href}
                   href={href}
@@ -676,7 +844,7 @@ export default function MyPage() {
           </section>
         )}
 
-        {/* ── 3. 최근 북마크 ── */}
+        {/* ── 4. 최근 북마크 ── */}
         <section className="bg-white dark:bg-[#1E1E1E] rounded-2xl border border-gray-100 dark:border-[#2E2E2E] p-5">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-semibold text-gray-900 dark:text-white">최근 저장한 뉴스</h3>

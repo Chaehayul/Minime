@@ -1,11 +1,10 @@
 import { Controller, Post, Body, Get, Req, Res, UseGuards } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { AuthGuard } from '@nestjs/passport';
 import type { Response } from 'express';
 import { AuthService } from './auth.service';
 import { SignupDto } from './dto/signup.dto';
 import { LoginDto } from './dto/login.dto';
-import { GoogleLoginGuard, GoogleSignupGuard } from './google-oauth.guard';
+import { GoogleCallbackGuard, GoogleLoginGuard, GoogleSignupGuard } from './google-oauth.guard';
 import { KakaoCallbackGuard, KakaoLoginGuard, KakaoSignupGuard } from './kakao-oauth.guard';
 import { NaverCallbackGuard, NaverLoginGuard, NaverSignupGuard } from './naver-oauth.guard';
 
@@ -39,14 +38,9 @@ export class AuthController {
   googleLogin() {}
 
   @Get('google/callback')
-  @UseGuards(AuthGuard('google'))
+  @UseGuards(GoogleCallbackGuard)
   async googleCallback(@Req() req, @Res() res: Response) {
-    try {
-      const result = await this.authService.socialLogin(req.user, this.getOauthMode(req));
-      return this.redirectWithToken(res, result.accessToken);
-    } catch (error) {
-      return this.redirectWithError(res, error);
-    }
+    return this.handleOauthCallback(req, res);
   }
 
   @Get('kakao')
@@ -64,12 +58,7 @@ export class AuthController {
   @Get('kakao/callback')
   @UseGuards(KakaoCallbackGuard)
   async kakaoCallback(@Req() req, @Res() res: Response) {
-    try {
-      const result = await this.authService.socialLogin(req.user, this.getOauthMode(req));
-      return this.redirectWithToken(res, result.accessToken);
-    } catch (error) {
-      return this.redirectWithError(res, error);
-    }
+    return this.handleOauthCallback(req, res);
   }
 
   @Get('naver')
@@ -87,11 +76,21 @@ export class AuthController {
   @Get('naver/callback')
   @UseGuards(NaverCallbackGuard)
   async naverCallback(@Req() req, @Res() res: Response) {
+    return this.handleOauthCallback(req, res);
+  }
+
+  private async handleOauthCallback(req, res: Response) {
+    const mode = this.getOauthMode(req);
+
+    if (this.isOauthError(req.user)) {
+      return this.redirectWithError(res, req.user.oauthError, mode);
+    }
+
     try {
-      const result = await this.authService.socialLogin(req.user, this.getOauthMode(req));
+      const result = await this.authService.socialLogin(req.user, mode);
       return this.redirectWithToken(res, result.accessToken);
     } catch (error) {
-      return this.redirectWithError(res, error);
+      return this.redirectWithError(res, error, mode);
     }
   }
 
@@ -100,17 +99,25 @@ export class AuthController {
     return res.redirect(`${frontendUrl}/auth/callback?token=${encodeURIComponent(accessToken)}`);
   }
 
-  private redirectWithError(res: Response, error: unknown) {
+  private redirectWithError(res: Response, error: unknown, mode: 'login' | 'signup' = 'signup') {
     const frontendUrl = this.configService.get<string>('FRONTEND_URL') ?? 'http://localhost:3001';
-    const message =
-      error instanceof Error
-        ? error.message
-        : '소셜 로그인에 실패했습니다. 회원가입을 먼저 진행해주세요.';
+    const message = this.getErrorMessage(error);
+    const path = mode === 'login' ? 'login' : 'signup';
 
-    return res.redirect(`${frontendUrl}/signup?error=${encodeURIComponent(message)}`);
+    return res.redirect(`${frontendUrl}/${path}?error=${encodeURIComponent(message)}`);
+  }
+
+  private getErrorMessage(error: unknown) {
+    if (error instanceof Error) return error.message;
+    if (typeof error === 'string') return error;
+    return '소셜 인증에 실패했습니다. 다시 시도해주세요.';
   }
 
   private getOauthMode(req: { query?: { state?: string } }): 'login' | 'signup' {
     return req.query?.state === 'login' ? 'login' : 'signup';
+  }
+
+  private isOauthError(user: unknown): user is { oauthError: string } {
+    return Boolean(user && typeof user === 'object' && 'oauthError' in user);
   }
 }

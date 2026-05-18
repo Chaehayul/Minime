@@ -1,4 +1,5 @@
 import {
+  ForbiddenException,
   Controller, Get, Post, Put, Delete,
   Param, Body, Query, UseGuards, Request, Headers,
 } from '@nestjs/common';
@@ -6,6 +7,7 @@ import { NewsService } from './news.service';
 import { CreateNewsDto } from './dto/create-news.dto';
 import { UpdateNewsDto } from './dto/update-news.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { UserRole } from '../users/user.entity';
 
 @Controller('news')
 export class NewsController {
@@ -64,6 +66,7 @@ export class NewsController {
   @Post()
   @UseGuards(JwtAuthGuard)
   create(@Body() dto: CreateNewsDto, @Request() req: any) {
+    this.assertReporterOrAdmin(req.user);
     return this.newsService.create(dto, req.user.id);
   }
 
@@ -77,5 +80,11 @@ export class NewsController {
   @UseGuards(JwtAuthGuard)
   remove(@Param('id') id: string) {
     return this.newsService.remove(+id);
+  }
+
+  private assertReporterOrAdmin(user: { role?: string }) {
+    if (![UserRole.REPORTER, UserRole.ADMIN].includes(user.role as UserRole)) {
+      throw new ForbiddenException('기자 승인 후 기사를 작성할 수 있습니다.');
+    }
   }
 }

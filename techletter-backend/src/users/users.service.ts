@@ -2,7 +2,7 @@ import { Injectable, ConflictException, NotFoundException, BadRequestException }
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
-import { User, SocialProvider } from './user.entity';
+import { User, SocialProvider, UserRole } from './user.entity';
 import { DeletedUser } from './deleted-user.entity';
 import { Bookmark } from '../interactions/entities/bookmark.entity';
 import { Like } from '../interactions/entities/like.entity';
@@ -143,6 +143,13 @@ export class UsersService {
     const user = await this.findById(id);
     if (!user) throw new ConflictException('유저를 찾을 수 없습니다.');
     if (data.nickname) user.nickname = data.nickname;
+    return this.usersRepository.save(user);
+  }
+
+  async updateRole(id: number, role: UserRole): Promise<User> {
+    const user = await this.findById(id);
+    if (!user) throw new NotFoundException('사용자를 찾을 수 없습니다.');
+    user.role = role;
     return this.usersRepository.save(user);
   }
 
