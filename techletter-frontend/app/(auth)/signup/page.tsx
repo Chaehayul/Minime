@@ -150,8 +150,8 @@ export default function SignupPage() {
             TechLetter
           </h1>
         </Link>
-        <p className="mb-5 text-center text-sm text-gray-500 dark:text-gray-400 sm:mb-6">
-          관심 있는 기술 뉴스와 기자를 만나보세요.
+        <p className="mb-8 text-center text-sm text-gray-500 dark:text-gray-400">
+          관심 있는 IT 뉴스를 더 편하게 받아보세요
         </p>
 
         {error && <div className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-600">{error}</div>}
@@ -185,7 +185,7 @@ export default function SignupPage() {
             disabled={loading || !requiredAgreed}
             className="w-full rounded-xl bg-blue-600 py-2.5 text-sm font-medium text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
           >
-            {loading ? '가입 중...' : '회원가입'}
+            {loading ? '가입 중...' : '일반 회원가입'}
           </button>
         </form>
 

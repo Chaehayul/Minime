@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -17,6 +17,16 @@ interface User {
   role: string;
   profileImage?: string | null;
   socialProvider?: string;
+}
+
+interface ReporterProfile {
+  id: number;
+  realName: string;
+  organization: string;
+  bio: string;
+  portfolioUrl?: string | null;
+  status: 'pending' | 'approved' | 'rejected';
+  rejectedReason?: string | null;
 }
 
 type SubscriptionStatus = 'NONE' | 'ACTIVE' | 'CANCELED' | 'EXPIRED' | 'PAYMENT_FAILED';
@@ -322,6 +332,7 @@ export default function MyPage() {
 
   const [user, setUser] = useState<User | null>(null);
   const [subscription, setSubscription] = useState<Subscription | null>(null);
+  const [reporterProfile, setReporterProfile] = useState<ReporterProfile | null>(null);
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
   const [stats, setStats] = useState({ bookmarks: 0, likes: 0, comments: 0 });
   const [loading, setLoading] = useState(true);
@@ -332,13 +343,24 @@ export default function MyPage() {
     setMounted(true);
     const fetchData = async () => {
       try {
-        const [userRes, subRes, bookmarkRes] = await Promise.all([
+        const [userRes, subRes, bookmarkRes, reporterRes] = await Promise.all([
           api.get('/users/me'),
           api.get('/subscriptions/me').catch(() => ({ data: null })),
           api.get('/users/me/bookmarks').catch(() => ({ data: [] })),
+          api.get('/reporters/me').catch(() => ({ data: null })),
         ]);
         setUser(userRes.data);
         setSubscription(subRes.data);
+        setReporterProfile(reporterRes.data);
+        if (reporterRes.data?.status === 'rejected') {
+          setReporterApplyOpen(true);
+          setReporterApplyForm({
+            realName: reporterRes.data.realName || '',
+            organization: reporterRes.data.organization || '',
+            bio: reporterRes.data.bio || '',
+            portfolioUrl: reporterRes.data.portfolioUrl || '',
+          });
+        }
         const bookmarkList = bookmarkRes.data || [];
         setBookmarks(bookmarkList.slice(0, 3));
         setStats({
@@ -362,6 +384,18 @@ export default function MyPage() {
   const handleLogout = () => {
     localStorage.removeItem('accessToken');
     router.push('/login');
+  };
+
+  const handleDeleteAccount = async () => {
+    if (!confirm('정말 탈퇴하시겠습니까? 이 작업은 되돌릴 수 없으며 모든 데이터가 삭제됩니다.')) return;
+    try {
+      await api.delete('/users/me');
+      alert('회원 탈퇴가 완료되었습니다. 이용해주셔서 감사합니다.');
+      localStorage.removeItem('accessToken');
+      router.push('/login');
+    } catch (err: any) {
+      alert(err.response?.data?.message || '회원 탈퇴에 실패했습니다.');
+    }
   };
 
   const handleUnsubscribe = async () => {
@@ -428,7 +462,7 @@ export default function MyPage() {
 
   return (
     // 전체 배경을 부드러운 다크그레이(#121212)로 변경
-    <div className="min-h-screen bg-gray-50 dark:bg-[#121212] transition-colors">
+    <div className="min-h-screen bg-gray-50 dark:bg-[#121212] transition-colors pb-32">
 
       {/* ── 헤더 ── */}
       <header className="sticky top-0 z-50 bg-white/80 dark:bg-[#121212]/80 backdrop-blur-md border-b border-gray-100 dark:border-[#2E2E2E] transition-colors">
@@ -453,6 +487,12 @@ export default function MyPage() {
                     <span className="text-[10px] px-1.5 py-0.5 bg-blue-50 dark:bg-[#2A2A2A]
                                      text-blue-600 dark:text-blue-400 rounded-md font-semibold">
                       ADMIN
+                    </span>
+                  )}
+                  {user?.role === 'reporter' && (
+                    <span className="text-[10px] px-1.5 py-0.5 bg-emerald-50 dark:bg-emerald-950/40
+                                     text-emerald-600 dark:text-emerald-300 rounded-md font-semibold">
+                      REPORTER
                     </span>
                   )}
                 </div>
@@ -636,14 +676,22 @@ export default function MyPage() {
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
             <span className="font-bold text-sm text-gray-900 dark:text-white">구독 설정</span>
           </div>
-          {subscription ? (
-            <div className="flex flex-col gap-3">
+
+          {/* 1. 파일 위쪽에 만들어둔 '결제 상세 카드' 불러오기 */}
+          <SubscriptionSection
+            subscription={subscription}
+            onUnsubscribe={handleUnsubscribe}
+            onResubscribe={handleResubscribe}
+          />
+
+          {/* 2. 구독 중(ACTIVE)일 때만 뉴스레터 알림 토글 스위치 보여주기 */}
+          {subscription?.status === 'ACTIVE' && (
+            <div className="mt-5 pt-4 border-t border-gray-100 dark:border-[#2A2A2A] flex flex-col gap-3">
               <div className="flex justify-between items-center">
                 <div>
                   <div className="text-sm text-gray-900 dark:text-gray-200">데일리 뉴스레터</div>
                   <div className="text-xs text-gray-500">매일 오전 수신 중</div>
                 </div>
-                {/* 👇 가짜 스위치를 진짜 Toggle 컴포넌트로 교체! */}
                 <Toggle on={subscription.dailyActive ?? false} onToggle={() => handleToggleSubscription('dailyActive')} />
               </div>
               <div className="flex justify-between items-center">
@@ -651,20 +699,8 @@ export default function MyPage() {
                   <div className="text-sm text-gray-900 dark:text-gray-200">주간 뉴스레터</div>
                   <div className="text-xs text-gray-500">매주 월요일 수신 중</div>
                 </div>
-                {/* 👇 가짜 스위치를 진짜 Toggle 컴포넌트로 교체! */}
                 <Toggle on={subscription.weeklyActive ?? false} onToggle={() => handleToggleSubscription('weeklyActive')} />
               </div>
-              <button onClick={handleUnsubscribe} className="mt-2 text-sm text-red-500 dark:text-red-400 hover:text-red-600 dark:hover:text-red-300 transition text-left">
-                구독 해지
-              </button>
-            </div>
-          ) : (
-            <div className="flex flex-col gap-3">
-              <p className="text-sm text-gray-500">아직 구독하지 않았어요</p>
-              <button onClick={handleSubscribe}
-                className="w-full bg-gray-900 dark:bg-white text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-200 rounded-xl py-2.5 text-sm font-medium transition">
-                뉴스레터 구독하기
-              </button>
             </div>
           )}
         </div>

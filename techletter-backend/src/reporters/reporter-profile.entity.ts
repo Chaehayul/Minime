@@ -22,7 +22,10 @@ export class ReporterProfile {
   @PrimaryGeneratedColumn('increment')
   id!: number;
 
-  @OneToOne(() => User)
+  @Column({ unique: true })
+  userId!: number;
+
+  @OneToOne(() => User, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'userId' })
   user!: User;
 
@@ -94,6 +97,25 @@ export class ReporterProfile {
 
   @Column({ type: 'int', nullable: true })
   reviewedById!: number | null;
+  realName!: string;
+
+  @Column()
+  organization!: string;
+
+  @Column({ type: 'text' })
+  bio!: string;
+
+  @Column({ type: 'varchar', length: 500, nullable: true })
+  portfolioUrl!: string | null;
+
+  @Column({ type: 'enum', enum: ReporterStatus, default: ReporterStatus.PENDING })
+  status!: ReporterStatus;
+
+  @Column({ type: 'text', nullable: true })
+  rejectedReason!: string | null;
+
+  @Column({ type: 'timestamp', nullable: true })
+  approvedAt!: Date | null;
 
   @CreateDateColumn()
   createdAt!: Date;

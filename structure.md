@@ -1,14 +1,23 @@
-# 🏗️ MiniProject - 프로젝트 구조
+﻿# MiniProject — 프로젝트 구조 요약
 
-## 📋 프로젝트 개요
+간단한 한눈 요약
 
-**MiniProject**는 NestJS 백엔드와 Next.js 프론트엔드로 구성된 풀스택 뉴스레터 플랫폼입니다.
-- **Backend**: NestJS + TypeScript
-- **Frontend**: Next.js + React + TypeScript + Tailwind CSS
+- Backend: NestJS + TypeScript 기반 API 서버(`techletter-backend`)
+- Frontend: Next.js(App Router) + React + TypeScript + Tailwind(`techletter-frontend`)
+
+목적: 뉴스/뉴스레터 플랫폼 — 사용자 인증, 구독, 뉴스 CRUD, 통계, 챗봇, 기자 관리 등 기능 포함
 
 ---
 
-## 📁 전체 폴더 구조
+## 최상위 파일/폴더
+
+- `package.json`, `README.md`, `structure.md`
+- `techletter-backend/` — NestJS 프로젝트
+- `techletter-frontend/` — Next.js 프로젝트
+
+---
+
+## 📁 전체 폴더 구조 (자세히)
 
 ```
 MiniProject/
@@ -28,16 +37,35 @@ MiniProject/
 │   │   ├── app.controller.ts
 │   │   ├── app.service.ts
 │   │   ├── auth/
+│   │   │   ├── auth.controller.ts
+│   │   │   ├── auth.module.ts
+│   │   │   ├── auth.service.ts
+│   │   │   ├── jwt.strategy.ts
+│   │   │   └── oauth-strategies/
 │   │   ├── categories/
+│   │   │   ├── categories.controller.ts
+│   │   │   ├── categories.service.ts
+│   │   │   └── category.entity.ts
 │   │   ├── chatbot/
 │   │   ├── database/
+│   │   │   └── migrations/
 │   │   ├── interactions/
 │   │   │   ├── bookmarks.controller.ts
+│   │   │   ├── bookmarks.service.ts
 │   │   │   ├── comments.controller.ts
+│   │   │   ├── comments.service.ts
 │   │   │   ├── likes.controller.ts
+│   │   │   ├── likes.service.ts
 │   │   │   ├── interactions.module.ts
 │   │   │   └── entities/
+│   │   ├── interviews/
 │   │   ├── news/
+│   │   │   ├── news.controller.ts
+│   │   │   ├── news.service.ts
+│   │   │   └── news.entity.ts
+│   │   ├── newsletter/
+│   │   ├── reporters/
+│   │   ├── search/
 │   │   ├── stats/
 │   │   ├── subscriptions/
 │   │   ├── tags/
@@ -49,146 +77,106 @@ MiniProject/
 │   │   └── jest-e2e.json
 │   └── uploads/
 └── techletter-frontend/
-    ├── package.json
-    ├── tsconfig.json
-    ├── next.config.ts
-    ├── eslint.config.mjs
-    ├── postcss.config.mjs
-    ├── next-env.d.ts
-    ├── README.md
-    ├── AGENTS.md
-    ├── CLAUDE.md
-    ├── app/
-    │   ├── layout.tsx
-    │   ├── page.tsx
-    │   ├── not-found.tsx
-    │   ├── globals.css
-    │   ├── (admin)/
-    │   ├── (auth)/
-    │   ├── (main)/
-    │   └── api/
-    ├── components/
-    │   ├── ThemeProvider.tsx
-    │   ├── admin/
-    │   ├── common/
-    │   ├── editor/
-    │   ├── interaction/
-    │   ├── layout/
-    │   └── news/
-    ├── hooks/
-    │   ├── useAuth.ts
-    │   ├── useBookmark.ts
-    │   ├── useDarkMode.ts
-    │   ├── useLike.ts
-    │   └── usePushNotification.ts
-    ├── lib/
-    │   ├── api.ts
-    │   ├── auth.ts
-    │   └── utils.ts
-    ├── store/
-    │   ├── authStore.ts
-    │   └── uiStore.ts
-    ├── styles/
-    │   └── theme.css
-    ├── types/
-    │   ├── api.ts
-    │   ├── news.ts
-    │   └── user.ts
-    └── public/
+	├── package.json
+	├── tsconfig.json
+	├── next.config.ts
+	├── eslint.config.mjs
+	├── postcss.config.mjs
+	├── next-env.d.ts
+	├── README.md
+	├── AGENTS.md
+	├── CLAUDE.md
+	├── app/
+	│   ├── globals.css
+	│   ├── layout.tsx
+	│   ├── page.tsx
+	│   ├── not-found.tsx
+	│   ├── (admin)/
+	│   ├── (auth)/
+	│   ├── (main)/
+	│   │   └── mypage/
+	│   └── api/
+	├── components/
+	│   ├── ThemeProvider.tsx
+	│   ├── admin/
+	│   ├── common/
+	│   ├── editor/
+	│   ├── interaction/
+	│   ├── layout/
+	│   └── news/
+	├── hooks/
+	│   ├── useAuth.ts
+	│   ├── useBookmark.ts
+	│   ├── useDarkMode.ts
+	│   ├── useLike.ts
+	│   ├── usePushNotification.ts
+	│   └── useUserReport.ts
+	├── lib/
+	│   ├── api.ts
+	│   ├── auth.ts
+	│   └── utils.ts
+	├── store/
+	│   ├── authStore.ts
+	│   └── uiStore.ts
+	├── styles/
+	│   └── theme.css
+	├── types/
+	│   ├── api.ts
+	│   ├── news.ts
+	│   └── user.ts
+	└── public/
 ```
 
 ---
 
-## 🔧 Backend (techletter-backend)
+## techletter-backend (요약)
 
-### 주요 구성
+- 진입점: `src/main.ts`
+- 주요 모듈: `auth/`, `users/`, `news/`, `newsletter/`, `subscriptions/`, `interactions/`(bookmarks/likes/comments), `chatbot/`, `search/`, `stats/`, `upload/`, `database/`(migrations)
+- 테스트: `test/` (e2e 설정)
+- 실행 예:
 
-- **`src/main.ts`**: NestJS 애플리케이션 진입점
-- **`src/app.module.ts`**: 루트 모듈, 하위 모듈 등록
-- **`auth/`**: 인증 관련 (JWT, OAuth 등)
-- **`users/`**: 사용자 관리
-- **`news/`**: 뉴스 CRUD 및 스케줄링
-- **`categories/`**: 카테고리 관리
-- **`tags/`**: 태그 관리
-- **`interactions/`**: 북마크, 좋아요, 댓글
-- **`subscriptions/`**: 구독 정보 및 결제
-- **`stats/`**: 관리자 통계
-- **`chatbot/`**: 챗봇 서비스
-- **`upload/`**: 파일 업로드
-- **`database/`**: 마이그레이션 및 DB 관련
-
-### 실행 스크립트
-
-```bash
-npm run start:dev
-npm run build
-npm run test
-npm run test:e2e
-```
-
----
-
-## 🎨 Frontend (techletter-frontend)
-
-### 주요 구성
-
-- **`app/`**: Next.js App Router
-  - `layout.tsx`: 공통 레이아웃
-  - `page.tsx`: 메인 페이지
-  - `not-found.tsx`: 404 페이지
-  - `(admin)/`: 관리자 전용 페이지
-  - `(auth)/`: 인증 페이지
-  - `(main)/`: 사용자용 메인 페이지
-  - `api/`: 서버 API 엔드포인트
-- **`components/`**: 재사용 UI 컴포넌트
-- **`hooks/`**: 커스텀 훅
-- **`lib/`**: API 클라이언트 및 유틸리티
-- **`store/`**: 상태 관리
-- **`types/`**: 타입 정의
-- **`styles/`**: 전역 스타일 및 테마
-- **`public/`**: 정적 자산
-
-### 실행 스크립트
-
-```bash
-npm run dev
-npm run build
-npm run start
-npm run lint
-```
-
----
-
-## 📊 기술 스택
-
-- **Frontend**: Next.js, React, TypeScript, Tailwind CSS
-- **Backend**: NestJS, TypeScript
-- **데이터베이스**: PostgreSQL (예상)
-
----
-
-## 🔄 전체 흐름
-
-1. 사용자 요청 → **Next.js frontend**
-2. API 호출 → **NestJS backend**
-3. 백엔드 비즈니스 로직 처리
-4. 데이터베이스 저장/조회
-5. 결과 반환 → **Frontend 렌더링**
-| **인증** | JWT, Google OAuth 2.0, Kakao OAuth |
-| **배포** | (설정 필요) |
-
----
-
-## 🚀 시작하기
-
-### 백엔드 설정
 ```bash
 cd techletter-backend
 npm install
 npm run start:dev
 ```
 
-### 프론트엔드 설정
+### 주요 파일 및 역할
+
+- `src/main.ts` — 애플리케이션 진입점 (NestJS 서버 부트스트랩)
+- `src/app.module.ts` — 루트 모듈, 하위 모듈 등록
+- `src/auth/` — JWT / OAuth 전략 및 가드 (google/kakao/naver 등)
+- `src/users/` — 사용자 CRUD 및 권한 로직
+- `src/news/` — 뉴스 작성/수정/삭제, 썸네일 처리
+- `src/subscriptions/` — 구독 상태 관리 API
+- `src/interactions/` — 북마크/좋아요/댓글 컨트롤러
+- `src/chatbot/` — 챗봇/AI 연동 서비스
+- `src/database/migrations/` — DB 마이그레이션
+- `test/jest-e2e.json` & `test/*.spec.ts` — e2e 테스트 설정
+
+### package.json 주요 스크립트
+
+- `npm run start:dev` — 개발 모드 (watch)
+- `npm run build` — 빌드 (NestJS `nest build`)
+- `npm run start:prod` — 프로덕션 실행 `node dist/main`
+- `npm run lint` — ESLint (자동 수정 포함)
+- `npm run test` / `test:e2e` — 유닛/통합 테스트
+
+---
+
+---
+
+## techletter-frontend (요약)
+
+- App Router 기반: `app/` (루트 레이아웃, 페이지, 라우트 그룹 `(admin)`, `(auth)`, `(main)` 등)
+- 재사용 컴포넌트: `components/`
+- 클라이언트 API 및 유틸: `lib/` (`api.ts` 등)
+- 훅: `hooks/` (인증, 북마크, 다크모드 등)
+- 전역 타입: `types/`
+- 정적 자산: `public/`
+- 실행 예:
+
 ```bash
 cd techletter-frontend
 npm install
@@ -197,57 +185,17 @@ npm run dev
 
 ---
 
-## 📝 주요 폴더
+## 개발/운영 포인트
 
-- `app/(main)/`: 일반 사용자 화면 라우트입니다.
-- `app/(auth)/`: 로그인, 회원가입 화면 라우트입니다.
-- `app/(admin)/`: 관리자 화면 라우트입니다.
-- `components/common/`: Header, Footer, Button, Modal, Pagination 등 공통 UI 컴포넌트입니다.
-- `components/news/`: 뉴스 카드, 목록, 상세, 태그, 핫토픽 관련 컴포넌트입니다.
-- `components/interaction/`: 좋아요, 북마크, 댓글, 공유 버튼 컴포넌트입니다.
-- `components/admin/`: 관리자용 테이블과 차트 컴포넌트입니다.
-- `components/editor/`: 뉴스 작성/수정용 에디터 컴포넌트입니다.
-- `hooks/`: 인증, 다크모드, 좋아요, 북마크, 푸시 알림 관련 커스텀 훅입니다.
-- `lib/`: API 클라이언트, 인증 유틸, 공통 유틸 함수입니다.
-- `store/`: Zustand 기반 전역 상태 저장소입니다.
-- `styles/`: 테마 CSS 파일입니다.
-- `types/`: API, 뉴스, 사용자 타입 정의입니다.
+- 인증: JWT 및 OAuth 전략이 `auth/`에 구현되어 있음
+- 구독/결제: `subscriptions` 관련 API 및 프론트 UI 존재
+- 관리자 기능: 관리자/기자용 라우트와 UI 컴포넌트 분리
+- 이미지/파일: 업로드 및 정적 파일 폴더(`uploads`, `public`)
 
-프론트엔드 주요 라우트:
+---
 
-- `/`: 메인 페이지
-- `/news`: 뉴스 목록
-- `/news/[id]`: 뉴스 상세
-- `/category/[slug]`: 카테고리별 뉴스
-- `/tag/[slug]`: 태그별 뉴스
-- `/search`: 검색
-- `/archive`: 아카이브
-- `/hot-topic`: 핫토픽
-- `/mypage`: 마이페이지
-- `/mypage/bookmarks`: 북마크
-- `/mypage/settings`: 설정
-- `/login`: 로그인
-- `/signup`: 회원가입
-- `/admin`: 관리자 대시보드
-- `/admin/news`: 관리자 뉴스 관리
-- `/admin/news/create`: 뉴스 작성
-- `/admin/news/[id]/edit`: 뉴스 수정
-- `/admin/subscribers`: 구독자 관리
-- `/admin/sends`: 발송 내역
-- `/admin/stats`: 통계
+## 요약(한 줄)
 
-프론트엔드 실행 스크립트:
+NestJS 백엔드와 Next.js 프론트엔드를 분리한 풀스택 뉴스레터 플랫폼 저장소입니다. 프론트엔드는 App Router 기반 구조와 재사용 컴포넌트, 훅, 타입 정의를 갖추고 있고, 백엔드는 인증·구독·뉴스·통계 등 핵심 API를 제공합니다.
 
-```bash
-npm run dev
-npm run build
-npm run lint
-```
-
-## Data Flow Overview
-
-1. 사용자는 `techletter-frontend`의 Next.js 화면에서 뉴스, 검색, 로그인, 마이페이지, 관리자 기능을 사용합니다.
-2. 프론트엔드는 `lib/api.ts` 등을 통해 백엔드 API와 통신합니다.
-3. `techletter-backend`는 NestJS 컨트롤러와 서비스를 통해 요청을 처리합니다.
-4. 데이터는 TypeORM 엔티티를 통해 PostgreSQL에 저장됩니다.
-5. 뉴스레터, 푸시, 이메일/카카오 알림 같은 비동기성 기능은 백엔드의 전용 모듈에서 처리됩니다.
+---

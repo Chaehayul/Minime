@@ -181,6 +181,13 @@ export class UsersService {
     return this.usersRepository.save(user);
   }
 
+  async updateRole(id: number, role: UserRole): Promise<User> {
+    const user = await this.findById(id);
+    if (!user) throw new NotFoundException('사용자를 찾을 수 없습니다.');
+    user.role = role;
+    return this.usersRepository.save(user);
+  }
+
   async validatePassword(password: string, hashedPassword: string): Promise<boolean> {
     return bcrypt.compare(password, hashedPassword);
   }

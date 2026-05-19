@@ -30,15 +30,18 @@ import { SearchModule } from './search/search.module';
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
-        type: 'mysql',
-        host: config.get('DB_HOST'),
-        port: +(config.get<string>('DB_PORT') ?? '3306'),
-        username: config.get('DB_USERNAME'),
-        password: config.get('DB_PASSWORD'),
-        database: config.get('DB_DATABASE'),
+        type: 'postgres',
+        host: process.env.DB_HOST,
+        port: parseInt(process.env.DB_PORT || '6543', 10),
+        username: process.env.DB_USERNAME,
+        password: process.env.DB_PASSWORD,
+        database: process.env.DB_DATABASE, // 👈 쉼표(,) 추가!
         entities: [__dirname + '/**/*.entity{.ts,.js}'],
         synchronize: true,
         logging: false,
+        ssl: {
+          rejectUnauthorized: false, // ☁️ 클라우드 DB 연결을 위한 필수 보안 설정!
+        },
       }),
     }),
     UsersModule,

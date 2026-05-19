@@ -12,6 +12,23 @@ interface Category {
   slug: string;
 }
 
+interface CurrentUser {
+  id: number;
+  email: string;
+  role: string;
+  nickname: string;
+}
+
+interface ReporterProfile {
+  id: number;
+  realName: string;
+  organization: string;
+  bio: string;
+  portfolioUrl?: string | null;
+  status: 'pending' | 'approved' | 'rejected';
+  rejectedReason?: string | null;
+}
+
 interface AiSeoResult {
   score: number;
   items: { label: string; ok: boolean; suggestion: string }[];
@@ -200,6 +217,7 @@ export default function AdminNewsCreatePage() {
     editorComment: '',
     relatedLinks: [{ title: '', url: '' }],
   });
+  const [isPremium, setIsPremium] = useState(false);
 
   const [sourceReferences, setSourceReferences] = useState<SourceReference[]>([
     { title: '', url: '', source: '', type: 'news', memo: '' },
@@ -220,6 +238,17 @@ export default function AdminNewsCreatePage() {
   const [previewMode, setPreviewMode] = useState<'pc' | 'mobile'>('pc');
   const thumbnailRef = useRef<HTMLInputElement>(null);
   const metaDescriptionRef = useRef<HTMLTextAreaElement>(null);
+  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
+  const [reporterProfile, setReporterProfile] = useState<ReporterProfile | null>(null);
+  const [reporterGateLoading, setReporterGateLoading] = useState(true);
+  const [reporterApplyLoading, setReporterApplyLoading] = useState(false);
+  const [reporterApplyError, setReporterApplyError] = useState('');
+  const [reporterApplyForm, setReporterApplyForm] = useState({
+    realName: '',
+    organization: '',
+    bio: '',
+    portfolioUrl: '',
+  });
 
   // 자동 임시저장
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
@@ -379,6 +408,7 @@ export default function AdminNewsCreatePage() {
       if (parsed.premiumContent) setPremiumContent(parsed.premiumContent);
       if (parsed.sourceReferences) setSourceReferences(parsed.sourceReferences);
       if (parsed.newsletterOption) setNewsletterOption(parsed.newsletterOption);
+      if (typeof parsed.isPremium === 'boolean') setIsPremium(parsed.isPremium);
       setDraftKey(key);
       setServerDraftId(parsed.serverDraftId ?? null);
       setLastSaved(parsed.savedAt ? new Date(parsed.savedAt) : null);
@@ -411,8 +441,6 @@ export default function AdminNewsCreatePage() {
     refreshAllDrafts();
   }, [refreshAllDrafts]);
 
-  useEffect(() => {
-    if (!draftKeyReady) return;
     api.get('/categories').then(res => setCategories(res.data)).catch(() => {});
     const saved = localStorage.getItem(draftKey) || localStorage.getItem(LEGACY_DRAFT_KEY);
     if (saved) {
@@ -434,7 +462,8 @@ export default function AdminNewsCreatePage() {
         localStorage.removeItem(LEGACY_DRAFT_KEY);
       } catch {}
     }
-  }, [draftKey, draftKeyReady]);
+    return () => { mounted = false; };
+  }, []);
 
   useEffect(() => {
     if (skipDirtyCheckRef.current) {
@@ -687,6 +716,21 @@ export default function AdminNewsCreatePage() {
     }
   };
 
+  const handleReporterApply = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setReporterApplyLoading(true);
+    setReporterApplyError('');
+    try {
+      const res = await api.post('/reporters/apply', reporterApplyForm);
+      setReporterProfile(res.data);
+      alert('기자 인증 신청이 접수되었습니다. 관리자 승인 후 기사 작성이 가능합니다.');
+    } catch (err: any) {
+      setReporterApplyError(err.response?.data?.message || '기자 인증 신청에 실패했습니다.');
+    } finally {
+      setReporterApplyLoading(false);
+    }
+  };
+
   const handleInterviewAnalyze = async () => {
     if (!interviewFile) { alert('인터뷰 음성 파일을 선택해 주세요.'); return; }
     setAiLoading('interview');
@@ -727,9 +771,8 @@ export default function AdminNewsCreatePage() {
   const seoItems = aiSeoResult?.items.length ? aiSeoResult.items : basicSeoItems;
   const seoColor = seoScore >= 80 ? 'text-emerald-400' : seoScore >= 50 ? 'text-yellow-400' : 'text-red-400';
   const seoBarColor = seoScore >= 80 ? 'bg-emerald-500' : seoScore >= 50 ? 'bg-yellow-500' : 'bg-red-500';
-  const seoReport = getSeoReport(form);
-  const displayedSeoScore = aiSeoResult ? seoScore : seoReport.score;
-  const displayedSeoColor = displayedSeoScore >= 80 ? 'text-emerald-400' : displayedSeoScore >= 50 ? 'text-yellow-400' : 'text-red-400';
+
+  const displayedSeoScore = Math.max(0, Math.min(100, Math.round((seoItems.filter((item) => item.ok).length / seoItems.length) * 100)));
   const displayedSeoBarColor = displayedSeoScore >= 80 ? 'bg-emerald-500' : displayedSeoScore >= 50 ? 'bg-yellow-500' : 'bg-red-500';
   const seoStatusLabel = displayedSeoScore >= 80 ? '발행 준비 좋음' : displayedSeoScore >= 50 ? '보완 필요' : '필수 항목 부족';
   const metaPreview = form.metaDescription || form.lead || form.content.replace(/<[^>]*>/g, '').slice(0, 120);
@@ -791,65 +834,124 @@ export default function AdminNewsCreatePage() {
         <span className="text-xs px-2 py-0.5 bg-yellow-500/20 text-yellow-400 rounded-full font-medium">구독자 전용</span>
         <span className="text-sm text-gray-500">뉴스레터에만 포함되는 추가 콘텐츠</span>
       </div>
-
-      <div>
-        <label className="text-xs text-gray-500 mb-2 block">핵심 포인트</label>
-        {premiumContent.keyPoints.map((point, i) => (
-          <div key={i} className="flex gap-2 mb-2">
-            <span className="text-yellow-400 text-sm pt-2 w-6">{i + 1}</span>
-            <input value={point} onChange={(e) => {
-              const updated = [...premiumContent.keyPoints];
-              updated[i] = e.target.value;
-              setPremiumContent(p => ({ ...p, keyPoints: updated }));
-            }} placeholder={`핵심 포인트 ${i + 1}`}
-              className="flex-1 bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 outline-none focus:ring-2 focus:ring-yellow-500"
-            />
-            {premiumContent.keyPoints.length > 1 && (
-              <button onClick={() => setPremiumContent(p => ({
-                ...p, keyPoints: p.keyPoints.filter((_, idx) => idx !== i)
-              }))} className="text-gray-500 hover:text-red-400 px-2">×</button>
-            )}
-          </div>
-        ))}
-        <button onClick={() => setPremiumContent(p => ({ ...p, keyPoints: [...p.keyPoints, ''] }))}
-          className="text-xs text-yellow-400 hover:text-yellow-300 transition">+ 포인트 추가</button>
+      <div className="mt-4 flex flex-wrap items-center gap-3">
+        <span className={`rounded-full px-3 py-1 text-xs font-medium ${isPremium ? 'bg-emerald-600 text-emerald-100' : 'bg-gray-800 text-gray-300'}`}>
+          {isPremium ? '프리미엄 콘텐츠' : '무료 공개 콘텐츠'}
+        </span>
+        <p className="text-xs text-gray-500">프리미엄으로 설정하면 구독자 전용 또는 유료 기사 표시로 활용할 수 있습니다.</p>
       </div>
-
-      <div>
-        <label className="text-xs text-gray-500 mb-1 block">에디터 코멘트</label>
-        <textarea value={premiumContent.editorComment}
-          onChange={(e) => setPremiumContent(p => ({ ...p, editorComment: e.target.value }))}
-          placeholder="구독자에게 전하는 에디터의 한마디..." rows={2}
-          className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 outline-none focus:ring-2 focus:ring-yellow-500 resize-none"
-        />
-      </div>
-
-      <div>
-        <label className="text-xs text-gray-500 mb-2 block">추천 링크</label>
-        {premiumContent.relatedLinks.map((link, i) => (
-          <div key={i} className="flex gap-2 mb-2">
-            <input value={link.title} onChange={(e) => {
-              const updated = [...premiumContent.relatedLinks];
-              updated[i] = { ...updated[i], title: e.target.value };
-              setPremiumContent(p => ({ ...p, relatedLinks: updated }));
-            }} placeholder="링크 제목" className="flex-1 bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 outline-none focus:ring-2 focus:ring-yellow-500" />
-            <input value={link.url} onChange={(e) => {
-              const updated = [...premiumContent.relatedLinks];
-              updated[i] = { ...updated[i], url: e.target.value };
-              setPremiumContent(p => ({ ...p, relatedLinks: updated }));
-            }} placeholder="https://" className="flex-1 bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 outline-none focus:ring-2 focus:ring-yellow-500" />
-            {premiumContent.relatedLinks.length > 1 && (
-              <button onClick={() => setPremiumContent(p => ({
-                ...p, relatedLinks: p.relatedLinks.filter((_, idx) => idx !== i)
-              }))} className="text-gray-500 hover:text-red-400 px-2">×</button>
-            )}
-          </div>
-        ))}
-        <button onClick={() => setPremiumContent(p => ({ ...p, relatedLinks: [...p.relatedLinks, { title: '', url: '' }] }))}
-          className="text-xs text-yellow-400 hover:text-yellow-300 transition">+ 링크 추가</button>
-      </div>
-    </div>
+    </section>
   );
+
+  if (reporterGateLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gray-950 text-sm text-gray-500">
+        권한 확인 중...
+      </div>
+    );
+  }
+
+  if (!canWriteNews) {
+    const isPending = reporterProfile?.status === 'pending';
+    const isRejected = reporterProfile?.status === 'rejected';
+
+    return (
+      <div className="min-h-screen bg-gray-950 px-4 py-10 text-white">
+        <div className="mx-auto w-full max-w-2xl rounded-lg border border-gray-800 bg-gray-900 p-8 shadow">
+          <button
+            type="button"
+            onClick={() => router.push('/mypage')}
+            className="mb-6 text-sm text-blue-400 hover:text-blue-300"
+          >
+            마이페이지로 돌아가기
+          </button>
+
+          <h1 className="text-2xl font-bold">기자 인증이 필요합니다</h1>
+          <p className="mt-2 text-sm leading-relaxed text-gray-400">
+            회원가입은 일반 계정으로 진행하고, 기사 작성 권한은 이 화면에서 별도로 신청합니다.
+            승인되면 기사 작성과 관리 기능을 사용할 수 있습니다.
+          </p>
+
+          {isPending ? (
+            <div className="mt-8 rounded-lg border border-yellow-700 bg-yellow-950/40 p-5 text-sm text-yellow-200">
+              기자 인증 신청이 접수되어 관리자 승인을 기다리고 있습니다.
+            </div>
+          ) : (
+            <>
+              {isRejected && (
+                <div className="mt-8 rounded-lg border border-red-800 bg-red-950/40 p-4 text-sm text-red-200">
+                  이전 신청이 반려되었습니다.
+                  {reporterProfile?.rejectedReason && (
+                    <div className="mt-2 text-red-100">사유: {reporterProfile.rejectedReason}</div>
+                  )}
+                </div>
+              )}
+
+              {reporterApplyError && (
+                <div className="mt-6 rounded-lg bg-red-950 p-3 text-sm text-red-300">
+                  {reporterApplyError}
+                </div>
+              )}
+
+              <form onSubmit={handleReporterApply} className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-sm text-gray-300">실명</label>
+                  <input
+                    type="text"
+                    value={reporterApplyForm.realName}
+                    onChange={(e) => setReporterApplyForm({ ...reporterApplyForm, realName: e.target.value })}
+                    className="w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-2.5 text-sm text-white outline-none focus:ring-2 focus:ring-blue-500"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-sm text-gray-300">소속/매체명</label>
+                  <input
+                    type="text"
+                    value={reporterApplyForm.organization}
+                    onChange={(e) => setReporterApplyForm({ ...reporterApplyForm, organization: e.target.value })}
+                    className="w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-2.5 text-sm text-white outline-none focus:ring-2 focus:ring-blue-500"
+                    required
+                  />
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="mb-1 block text-sm text-gray-300">포트폴리오 URL</label>
+                  <input
+                    type="url"
+                    value={reporterApplyForm.portfolioUrl}
+                    onChange={(e) => setReporterApplyForm({ ...reporterApplyForm, portfolioUrl: e.target.value })}
+                    className="w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-2.5 text-sm text-white outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="https://"
+                  />
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="mb-1 block text-sm text-gray-300">기자 소개 및 신청 사유</label>
+                  <textarea
+                    value={reporterApplyForm.bio}
+                    onChange={(e) => setReporterApplyForm({ ...reporterApplyForm, bio: e.target.value })}
+                    className="min-h-32 w-full resize-none rounded-lg border border-gray-700 bg-gray-800 px-4 py-2.5 text-sm text-white outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="취재 분야, 경력, 작성하고 싶은 기사 주제를 적어주세요."
+                    required
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={reporterApplyLoading}
+                  className="rounded-lg bg-blue-600 py-3 text-sm font-medium text-white transition hover:bg-blue-700 disabled:opacity-50 sm:col-span-2"
+                >
+                  {reporterApplyLoading ? '신청 중...' : isRejected ? '기자 인증 다시 신청' : '기자 인증 신청'}
+                </button>
+              </form>
+            </>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen transition-colors duration-200 pb-28">

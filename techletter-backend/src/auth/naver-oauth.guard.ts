@@ -1,5 +1,6 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
+import { OAuthErrorUser } from './google-oauth.guard';
 
 @Injectable()
 export class NaverLoginGuard extends AuthGuard('naver') {
@@ -17,15 +18,13 @@ export class NaverSignupGuard extends AuthGuard('naver') {
 
 @Injectable()
 export class NaverCallbackGuard extends AuthGuard('naver') {
-  handleRequest<TUser = unknown>(err: unknown, user: TUser, info: unknown): TUser {
+  handleRequest<TUser = unknown>(err: unknown, user: TUser, info: unknown): TUser | OAuthErrorUser {
     if (err) {
-      const message = err instanceof Error ? err.message : 'Naver authentication failed';
-      throw new UnauthorizedException(message);
+      return { oauthError: err instanceof Error ? err.message : 'Naver authentication failed' };
     }
 
     if (!user) {
-      const message = info instanceof Error ? info.message : 'Naver authentication failed';
-      throw new UnauthorizedException(message);
+      return { oauthError: info instanceof Error ? info.message : 'Naver authentication failed' };
     }
 
     return user;
