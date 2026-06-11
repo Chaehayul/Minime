@@ -37,11 +37,27 @@ export class UsersService {
   ) {}
 
   async findByEmail(email: string): Promise<User | null> {
-    return this.usersRepository.findOne({ where: { email } });
+    return this.usersRepository
+      .createQueryBuilder('user')
+      .addSelect('user.password')
+      .where('user.email = :email', { email })
+      .getOne();
   }
 
   async findById(id: number): Promise<User | null> {
     return this.usersRepository.findOne({ where: { id } });
+  }
+
+  async findDemoUser(role: UserRole, configuredId?: number): Promise<User | null> {
+    if (configuredId) {
+      const configuredUser = await this.findById(configuredId);
+      if (configuredUser?.role === role) return configuredUser;
+    }
+
+    return this.usersRepository.findOne({
+      where: { role },
+      order: { id: 'ASC' },
+    });
   }
 
   async listForAdmin(): Promise<User[]> {
@@ -194,7 +210,11 @@ export class UsersService {
 
   // ✅ 1. 비밀번호 변경 로직 추가
   async updatePassword(userId: number, currentPassword: string, newPassword: string): Promise<{ message: string }> {
-    const user = await this.findById(userId);
+    const user = await this.usersRepository
+      .createQueryBuilder('user')
+      .addSelect('user.password')
+      .where('user.id = :userId', { userId })
+      .getOne();
     if (!user) throw new NotFoundException('유저를 찾을 수 없습니다.');
 
     // 소셜 로그인 등 비밀번호가 없는 계정 예외 처리

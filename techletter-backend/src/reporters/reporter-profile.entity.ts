@@ -29,9 +29,6 @@ export class ReporterProfile {
   @JoinColumn({ name: 'userId' })
   user!: User;
 
-  @Column()
-  userId!: number;
-
   @Column({ unique: true })
   slug!: string;
 
@@ -92,7 +89,7 @@ export class ReporterProfile {
   @Column({ type: 'varchar', default: ReporterStatus.PENDING })
   status!: ReporterStatus;
 
-  @Column({ type: 'datetime', nullable: true })
+  @Column({ type: 'timestamp', nullable: true })
   approvedAt!: Date | null;
 
   @Column({ type: 'int', default: 1 })
@@ -104,30 +101,11 @@ export class ReporterProfile {
   @Column({ type: 'text', nullable: true })
   reviewMessage!: string | null;
 
-  @Column({ type: 'datetime', nullable: true })
+  @Column({ type: 'timestamp', nullable: true })
   reviewedAt!: Date | null;
 
   @Column({ type: 'int', nullable: true })
   reviewedById!: number | null;
-  realName!: string;
-
-  @Column()
-  organization!: string;
-
-  @Column({ type: 'text' })
-  bio!: string;
-
-  @Column({ type: 'varchar', length: 500, nullable: true })
-  portfolioUrl!: string | null;
-
-  @Column({ type: 'enum', enum: ReporterStatus, default: ReporterStatus.PENDING })
-  status!: ReporterStatus;
-
-  @Column({ type: 'text', nullable: true })
-  rejectedReason!: string | null;
-
-  @Column({ type: 'timestamp', nullable: true })
-  approvedAt!: Date | null;
 
   @CreateDateColumn()
   createdAt!: Date;

@@ -3,15 +3,19 @@ import { AppModule } from './app.module';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { join } from 'path';
 
+function parseCorsOrigins(value?: string) {
+  return value?.split(',').map((origin) => origin.trim()).filter(Boolean) ?? ['http://localhost:3001'];
+}
+
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
   app.enableCors({
-    origin: 'http://localhost:3001',
+    origin: parseCorsOrigins(process.env.CORS_ORIGINS ?? process.env.FRONTEND_URL),
     credentials: true,
   });
   app.useStaticAssets(join(__dirname, '..', 'uploads'), {
     prefix: '/uploads',
   });
-  await app.listen(process.env.PORT ?? 3000);
+  await app.listen(process.env.PORT ?? 3000, '0.0.0.0');
 }
 bootstrap();

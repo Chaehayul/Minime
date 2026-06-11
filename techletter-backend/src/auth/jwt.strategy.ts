@@ -17,7 +17,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     });
   }
 
-  async validate(payload: { sub: number; email: string; role: string }) {
+  async validate(payload: { sub: number; email: string; role: string; isDemo?: boolean }) {
     // 토큰 캐시 말고 DB에서 최신 유저 정보 가져옴
     const user = await this.usersService.findById(payload.sub);
     if (!user) return null;
@@ -33,6 +33,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       interestCategoryIds: user.interestCategoryIds,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
+      isDemo: payload.isDemo === true,
     };
   }
 }

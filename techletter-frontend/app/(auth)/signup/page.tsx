@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import api from '@/lib/api';
+import api, { API_BASE_URL } from '@/lib/api';
 
 type AgreementKey =
   | 'serviceTermsAgreed'
@@ -78,7 +78,7 @@ export default function SignupPage() {
   const [openTerms, setOpenTerms] = useState<TermsKey | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const authBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:3000';
+  const authBaseUrl = API_BASE_URL;
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);

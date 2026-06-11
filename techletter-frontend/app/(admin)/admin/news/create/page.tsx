@@ -218,7 +218,6 @@ export default function AdminNewsCreatePage() {
     editorComment: '',
     relatedLinks: [{ title: '', url: '' }],
   });
-  const [isPremium, setIsPremium] = useState(false);
 
   const [sourceReferences, setSourceReferences] = useState<SourceReference[]>([
     { title: '', url: '', source: '', type: 'news', memo: '' },
@@ -409,7 +408,6 @@ export default function AdminNewsCreatePage() {
       if (parsed.premiumContent) setPremiumContent(parsed.premiumContent);
       if (parsed.sourceReferences) setSourceReferences(parsed.sourceReferences);
       if (parsed.newsletterOption) setNewsletterOption(parsed.newsletterOption);
-      if (typeof parsed.isPremium === 'boolean') setIsPremium(parsed.isPremium);
       setDraftKey(key);
       setServerDraftId(parsed.serverDraftId ?? null);
       setLastSaved(parsed.savedAt ? new Date(parsed.savedAt) : null);
@@ -437,10 +435,12 @@ export default function AdminNewsCreatePage() {
   useEffect(() => {
     api.get('/users/me')
       .then((res) => {
+        setCurrentUser(res.data);
         setRole(res.data?.role || null);
         setDraftKey(getDraftKey(res.data?.id));
       })
       .catch(() => {
+        setCurrentUser(null);
         setRole(null);
         setDraftKey(getDraftKey());
       })
@@ -448,6 +448,28 @@ export default function AdminNewsCreatePage() {
     refreshAllDrafts();
   }, [refreshAllDrafts]);
 
+  useEffect(() => {
+    let mounted = true;
+    const checkReporterAccess = async () => {
+      try {
+        const [meRes, reporterRes] = await Promise.all([
+          api.get<CurrentUser>('/users/me'),
+          api.get<ReporterProfile>('/reporters/me').catch(() => ({ data: null as ReporterProfile | null })),
+        ]);
+        if (!mounted) return;
+        setCurrentUser(meRes.data);
+        setRole(meRes.data?.role || null);
+        setReporterProfile(reporterRes.data);
+      } finally {
+        if (mounted) setReporterGateLoading(false);
+      }
+    };
+    checkReporterAccess();
+    return () => { mounted = false; };
+  }, []);
+
+  useEffect(() => {
+    if (!draftKeyReady) return;
     api.get('/categories').then(res => setCategories(res.data)).catch(() => {});
     const saved = localStorage.getItem(draftKey) || localStorage.getItem(LEGACY_DRAFT_KEY);
     if (saved) {
@@ -469,8 +491,7 @@ export default function AdminNewsCreatePage() {
         localStorage.removeItem(LEGACY_DRAFT_KEY);
       } catch {}
     }
-    return () => { mounted = false; };
-  }, []);
+  }, [draftKey, draftKeyReady]);
 
   useEffect(() => {
     if (skipDirtyCheckRef.current) {
@@ -626,7 +647,6 @@ export default function AdminNewsCreatePage() {
   const handleAiAnalyze = async () => {
     if (!form.title && !form.content) { alert('제목 또는 본문을 입력해주세요.'); return; }
     setAiLoading('analyze');
-    const contentText = form.content.replace(/<[^>]*>/g, '').slice(0, 1000);
     try {
       const { data: aiResult } = await api.post('/news/ai/analyze', {
         title: form.title,
@@ -650,71 +670,6 @@ export default function AdminNewsCreatePage() {
         keyPoints: aiResult.keyPoints || [],
         newsletterSummary: aiResult.newsletterSummary || '',
         styleNote: aiResult.styleNote || '',
-      });
-      return;
-
-      const response = await fetch('/news/ai/analyze', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': '',
-        },
-        body: JSON.stringify({
-          model: 'gpt-4o-mini',
-          messages: [{
-            role: 'user',
-            content: `다음 뉴스 기사를 분석하여 JSON 형식으로만 응답해주세요. 다른 텍스트는 절대 포함하지 마세요.
-
-  제목: ${form.title || '(미입력)'}
-  본문: ${contentText || '(미입력)'}
-  현재 태그: ${form.tags.join(', ') || '(없음)'}
-
-  다음 JSON 구조로 응답하세요:
-  {
-    "seoScore": 75,
-    "seoItems": [
-      {"label": "제목이 검색 친화적입니다", "ok": true, "suggestion": ""},
-      {"label": "키워드가 본문에 적절히 분포되어 있습니다", "ok": true, "suggestion": ""},
-      {"label": "소제목 추가를 권장합니다", "ok": false, "suggestion": "H2 태그로 소제목을 2~3개 추가하면 가독성과 SEO가 향상됩니다"},
-      {"label": "키워드 반복 빈도가 적절합니다", "ok": true, "suggestion": ""},
-      {"label": "검색 노출 가능성이 높습니다", "ok": false, "suggestion": "롱테일 키워드를 제목에 포함시켜 보세요"}
-    ],
-    "keywords": ["핵심키워드1", "핵심키워드2", "핵심키워드3"],
-    "titleSuggestions": ["추천제목1", "추천제목2", "추천제목3"],
-    "metaSuggestion": "SEO에 최적화된 메타 설명 (50~160자)",
-    "lead": "2문장 이내의 리드문",
-    "tags": ["태그1", "태그2", "태그3", "태그4", "태그5"],
-    "keyPoints": ["핵심포인트1", "핵심포인트2", "핵심포인트3"],
-    "newsletterSummary": "뉴스레터용 2~3문장 요약",
-    "styleNote": "문체 및 가독성 분석 결과 한 문장",
-    "readabilityNote": "본문 구조 개선 제안 한 문장"
-  }`
-          }],
-          temperature: 0.7,
-        }),
-      });
-      const data = await response.json();
-      // ✅ 여기가 핵심 변경 포인트
-      const text = data.choices?.[0]?.message?.content || '{}';
-      const clean = text.replace(/```json|```/g, '').trim();
-      const parsed = JSON.parse(clean);
-
-      setAiSeoResult({
-        score: parsed.seoScore || 0,
-        items: parsed.seoItems || [],
-        keywords: parsed.keywords || [],
-        titleSuggestions: parsed.titleSuggestions || [],
-        metaSuggestion: parsed.metaSuggestion || '',
-        readabilityNote: parsed.readabilityNote || '',
-      });
-      setAiGeneratedContents({
-        titles: parsed.titleSuggestions || [],
-        lead: parsed.lead || '',
-        tags: parsed.tags || [],
-        meta: parsed.metaSuggestion || '',
-        keyPoints: parsed.keyPoints || [],
-        newsletterSummary: parsed.newsletterSummary || '',
-        styleNote: parsed.styleNote || '',
       });
     } catch (err: any) {
       alert(err.response?.data?.message || err.message || 'AI 분석 중 오류가 발생했습니다.');
@@ -780,13 +735,16 @@ export default function AdminNewsCreatePage() {
   const seoBarColor = seoScore >= 80 ? 'bg-emerald-500' : seoScore >= 50 ? 'bg-yellow-500' : 'bg-red-500';
 
   const displayedSeoScore = Math.max(0, Math.min(100, Math.round((seoItems.filter((item) => item.ok).length / seoItems.length) * 100)));
+  const displayedSeoColor = displayedSeoScore >= 80 ? 'text-emerald-400' : displayedSeoScore >= 50 ? 'text-yellow-400' : 'text-red-400';
   const displayedSeoBarColor = displayedSeoScore >= 80 ? 'bg-emerald-500' : displayedSeoScore >= 50 ? 'bg-yellow-500' : 'bg-red-500';
+  const seoReport = getSeoReport(form);
   const seoStatusLabel = displayedSeoScore >= 80 ? '발행 준비 좋음' : displayedSeoScore >= 50 ? '보완 필요' : '필수 항목 부족';
   const metaPreview = form.metaDescription || form.lead || form.content.replace(/<[^>]*>/g, '').slice(0, 120);
   const qualityReport = getArticleQualityReport(form, sourceReferences);
   const qualityColor = qualityReport.score >= 80 ? 'text-emerald-400' : qualityReport.score >= 55 ? 'text-yellow-400' : 'text-red-400';
   const qualityBarColor = qualityReport.score >= 80 ? 'bg-emerald-500' : qualityReport.score >= 55 ? 'bg-yellow-500' : 'bg-red-500';
   const isReporter = role === 'reporter';
+  const canWriteNews = currentUser?.role === 'admin' || reporterProfile?.status === 'approved';
 
   const applyMetaDescription = (description: string) => {
     setForm((f) => ({ ...f, metaDescription: description }));
@@ -842,13 +800,7 @@ export default function AdminNewsCreatePage() {
         <span className="text-xs px-2 py-0.5 bg-yellow-500/20 text-yellow-400 rounded-full font-medium">구독자 전용</span>
         <span className="text-sm text-gray-500">뉴스레터에만 포함되는 추가 콘텐츠</span>
       </div>
-      <div className="mt-4 flex flex-wrap items-center gap-3">
-        <span className={`rounded-full px-3 py-1 text-xs font-medium ${isPremium ? 'bg-emerald-600 text-emerald-100' : 'bg-gray-800 text-gray-300'}`}>
-          {isPremium ? '프리미엄 콘텐츠' : '무료 공개 콘텐츠'}
-        </span>
-        <p className="text-xs text-gray-500">프리미엄으로 설정하면 구독자 전용 또는 유료 기사 표시로 활용할 수 있습니다.</p>
-      </div>
-    </section>
+    </div>
   );
 
   if (reporterGateLoading) {

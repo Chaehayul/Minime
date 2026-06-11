@@ -7,6 +7,7 @@ import { LoginDto } from './dto/login.dto';
 import { GoogleCallbackGuard, GoogleLoginGuard, GoogleSignupGuard } from './google-oauth.guard';
 import { KakaoCallbackGuard, KakaoLoginGuard, KakaoSignupGuard } from './kakao-oauth.guard';
 import { NaverCallbackGuard, NaverLoginGuard, NaverSignupGuard } from './naver-oauth.guard';
+import { UserRole } from '../users/user.entity';
 
 @Controller('auth')
 export class AuthController {
@@ -23,6 +24,11 @@ export class AuthController {
   @Post('login')
   login(@Body() dto: LoginDto) {
     return this.authService.login(dto);
+  }
+
+  @Post('demo')
+  demo(@Body() body: { role: UserRole }) {
+    return this.authService.demoLogin(body.role);
   }
 
   @Get('google')

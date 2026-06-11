@@ -3,6 +3,7 @@ import type { Metadata } from 'next';
 import BottomNav from '@/components/layout/BottomNav';
 import { ThemeProvider } from '@/components/ThemeProvider';
 import Chatbot from '@/components/common/Chatbot';
+import PortfolioDemoSwitcher from '@/components/common/PortfolioDemoSwitcher';
 
 export const metadata: Metadata = {
   title: 'TechLetter',
@@ -19,6 +20,7 @@ export default function RootLayout({
       <body>
         <ThemeProvider>
           {children}
+          <PortfolioDemoSwitcher />
           <Chatbot />
           <BottomNav />
         </ThemeProvider>

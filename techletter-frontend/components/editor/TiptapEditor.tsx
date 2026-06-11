@@ -19,7 +19,7 @@ import Superscript from '@tiptap/extension-superscript';
 import Subscript from '@tiptap/extension-subscript';
 import CharacterCount from '@tiptap/extension-character-count';
 import { useState, useEffect, useRef } from 'react';
-import api from '@/lib/api';
+import api, { API_BASE_URL } from '@/lib/api';
 
 const FontSize = Extension.create({
   name: 'fontSize',
@@ -208,7 +208,7 @@ export default function TiptapEditor({ content, onChange, onAutoSave, references
       xhr.upload.onprogress = (e) => { if (e.lengthComputable) setUploadProgress(Math.round((e.loaded / e.total) * 100)); };
       xhr.onload = () => { setUploadProgress(null); const data = JSON.parse(xhr.responseText); editor.chain().focus().setImage({ src: data.url }).run(); };
       xhr.onerror = () => { setUploadProgress(null); alert('이미지 업로드 실패'); };
-      xhr.open('POST', 'http://localhost:3000/upload/image');
+      xhr.open('POST', `${API_BASE_URL}/upload/image`);
       xhr.setRequestHeader('Authorization', `Bearer ${localStorage.getItem('accessToken')}`);
       xhr.send(formData); setUploadProgress(0);
     };
@@ -225,7 +225,7 @@ export default function TiptapEditor({ content, onChange, onAutoSave, references
       xhr.upload.onprogress = (e) => { if (e.lengthComputable) setUploadProgress(Math.round((e.loaded / e.total) * 100)); };
       xhr.onload = () => { setUploadProgress(null); const data = JSON.parse(xhr.responseText); editor.chain().focus().setContent(editor.getHTML() + `<video controls src="${data.url}" style="max-width:100%;margin:1rem 0;border-radius:8px;"></video>`).run(); };
       xhr.onerror = () => { setUploadProgress(null); alert('동영상 업로드 실패'); };
-      xhr.open('POST', 'http://localhost:3000/upload/video');
+      xhr.open('POST', `${API_BASE_URL}/upload/video`);
       xhr.setRequestHeader('Authorization', `Bearer ${localStorage.getItem('accessToken')}`);
       xhr.send(formData); setUploadProgress(0);
     };

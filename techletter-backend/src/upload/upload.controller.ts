@@ -5,6 +5,7 @@ import {
   UploadedFile,
   UseGuards,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
@@ -12,6 +13,13 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
 @Controller('upload')
 export class UploadController {
+  constructor(private readonly configService: ConfigService) {}
+
+  private getUploadUrl(filename: string) {
+    const publicBaseUrl = this.configService.get<string>('PUBLIC_BASE_URL') ?? 'http://localhost:3000';
+    return `${publicBaseUrl.replace(/\/$/, '')}/uploads/${filename}`;
+  }
+
   @Post('image')
   @UseGuards(JwtAuthGuard)
   @UseInterceptors(
@@ -34,7 +42,7 @@ export class UploadController {
   )
   uploadImage(@UploadedFile() file: Express.Multer.File) {
     return {
-      url: `http://localhost:3000/uploads/${file.filename}`,
+      url: this.getUploadUrl(file.filename),
     };
   }
 
@@ -60,7 +68,7 @@ export class UploadController {
   )
   uploadVideo(@UploadedFile() file: Express.Multer.File) {
     return {
-      url: `http://localhost:3000/uploads/${file.filename}`,
+      url: this.getUploadUrl(file.filename),
     };
   }
 }

@@ -1,7 +1,9 @@
 import axios from 'axios';
 
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:3000';
+
 const api = axios.create({
-  baseURL: 'http://localhost:3000',
+  baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -21,6 +23,9 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
+    if (error.response?.status === 403 && error.response?.data?.code === 'DEMO_READ_ONLY') {
+      window.alert(error.response.data.message);
+    }
     if (error.response?.status === 401) {
       localStorage.removeItem('accessToken');
       window.location.href = '/login';
@@ -33,7 +38,7 @@ api.interceptors.response.use(
 export const getImageUrl = (url: string | null | undefined): string => {
   if (!url) return '';
   if (url.startsWith('http')) return url;
-  return `http://localhost:3000${url}`;
+  return `${API_BASE_URL}${url}`;
 };
 
 export default api;
