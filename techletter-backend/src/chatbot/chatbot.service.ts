@@ -16,7 +16,7 @@ interface ExternalTrend {
 @Injectable()
 export class ChatbotService {
   private readonly logger = new Logger(ChatbotService.name);
-  private openai: OpenAI;
+  private openai: OpenAI | null;
 
   private trendCache: { data: ExternalTrend[]; cachedAt: number } | null = null;
   private readonly CACHE_TTL_MS = 5 * 60 * 1000;
@@ -26,7 +26,9 @@ export class ChatbotService {
     private newsRepository: Repository<News>,
     private dataSource: DataSource,
   ) {
-    this.openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    this.openai = process.env.OPENAI_API_KEY
+      ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+      : null;
   }
 
   // ─────────────────────────────────────────────
@@ -34,6 +36,11 @@ export class ChatbotService {
   // userId가 있으면 개인화, 없으면 일반 브리핑
   // ─────────────────────────────────────────────
   async getAnswer(userMessage: string, userId?: string): Promise<string> {
+    const openai = this.openai;
+    if (!openai) {
+      return '현재 포트폴리오 데모에서는 AI 챗봇 기능이 비활성화되어 있습니다.';
+    }
+
     try {
       // 1. 자체 뉴스 + 외부 트렌드 병렬 수집
       const [ownNewsContext, externalTrends] = await Promise.all([
@@ -59,7 +66,7 @@ export class ChatbotService {
         personalContext,
       );
 
-      const response = await this.openai.chat.completions.create({
+      const response = await openai.chat.completions.create({
         model: 'gpt-4o-mini',
         messages: [
           { role: 'system', content: systemPrompt },

@@ -1,4 +1,8 @@
-import { Injectable, InternalServerErrorException } from '@nestjs/common';
+import {
+  Injectable,
+  InternalServerErrorException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import OpenAI from 'openai';
 import { createReadStream } from 'fs';
 import { unlink } from 'fs/promises';
@@ -15,11 +19,18 @@ export interface InterviewAnalysis {
 
 @Injectable()
 export class InterviewsService {
-  private readonly openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
-  });
+  private readonly openai = process.env.OPENAI_API_KEY
+    ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+    : null;
 
   async analyze(file: Express.Multer.File): Promise<InterviewAnalysis> {
+    if (!this.openai) {
+      await unlink(file.path).catch(() => undefined);
+      throw new ServiceUnavailableException(
+        '인터뷰 분석 기능에 필요한 OPENAI_API_KEY가 설정되지 않았습니다.',
+      );
+    }
+
     try {
       const transcript = await this.transcribe(file.path);
       const analysis = await this.summarizeForArticle(transcript);
@@ -37,7 +48,7 @@ export class InterviewsService {
   }
 
   private async transcribe(filePath: string): Promise<string> {
-    const transcription = await this.openai.audio.transcriptions.create({
+    const transcription = await this.openai!.audio.transcriptions.create({
       file: createReadStream(filePath),
       model: process.env.OPENAI_TRANSCRIBE_MODEL || 'whisper-1',
       language: 'ko',
@@ -48,7 +59,7 @@ export class InterviewsService {
   }
 
   private async summarizeForArticle(transcript: string): Promise<Omit<InterviewAnalysis, 'transcript'>> {
-    const response = await this.openai.chat.completions.create({
+    const response = await this.openai!.chat.completions.create({
       model: process.env.OPENAI_SUMMARY_MODEL || 'gpt-4o-mini',
       response_format: { type: 'json_object' },
       messages: [

@@ -37,7 +37,7 @@ interface OwnNewsResult {
 @Injectable()
 export class ReporterChatbotService {
   private readonly logger = new Logger(ReporterChatbotService.name);
-  private openai: OpenAI;
+  private openai: OpenAI | null;
 
   // 네이버 뉴스 캐시 (검색어별, 3분 TTL)
   private naverCache = new Map<string, { data: NaverNewsItem[]; cachedAt: number }>();
@@ -48,7 +48,9 @@ export class ReporterChatbotService {
     private newsRepository: Repository<News>,
     private dataSource: DataSource,
   ) {
-    this.openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    this.openai = process.env.OPENAI_API_KEY
+      ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+      : null;
   }
 
   // ─────────────────────────────────────────────
@@ -58,6 +60,11 @@ export class ReporterChatbotService {
     userMessage: string,
     articleDraft?: string, // 기자가 작성 중인 기사 초안 (선택)
   ): Promise<string> {
+    const openai = this.openai;
+    if (!openai) {
+      return '현재 포트폴리오 데모에서는 기자 AI 도우미 기능이 비활성화되어 있습니다.';
+    }
+
     try {
       // 메시지에서 검색 키워드 추출
       const searchKeyword = this.extractKeyword(userMessage);
@@ -74,7 +81,7 @@ export class ReporterChatbotService {
         articleDraft,
       );
 
-      const response = await this.openai.chat.completions.create({
+      const response = await openai.chat.completions.create({
         model: 'gpt-4o-mini',
         messages: [
           { role: 'system', content: systemPrompt },
