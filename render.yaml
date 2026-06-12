@@ -26,8 +26,8 @@ services:
       - key: DATABASE_URL
         sync: false
       - key: FRONTEND_URL
-        sync: false
+        value: https://minime-eight.vercel.app
       - key: CORS_ORIGINS
-        sync: false
+        value: https://minime-eight.vercel.app
       - key: PUBLIC_BASE_URL
-        sync: false
+        value: https://minime-api.onrender.com
