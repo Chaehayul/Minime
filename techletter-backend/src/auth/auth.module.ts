@@ -21,8 +21,8 @@ import { NaverStrategy } from './naver.strategy';
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
-        secret: config.get('JWT_SECRET'),
-        signOptions: { expiresIn: config.get('JWT_EXPIRES_IN') },
+        secret: config.get<string>('JWT_SECRET') || 'local-development-secret',
+        signOptions: { expiresIn: config.get('JWT_EXPIRES_IN') || '7d' },
       }),
     }),
   ],

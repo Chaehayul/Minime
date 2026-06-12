@@ -94,8 +94,12 @@ export class AuthService {
 
   private generateToken(userId: number, email: string, role: string, isDemo = false) {
     const payload = { sub: userId, email, role, isDemo };
+    const secret = this.configService.get<string>('JWT_SECRET') || 'local-development-secret';
     return {
-      accessToken: this.jwtService.sign(payload),
+      accessToken: this.jwtService.sign(payload, {
+        secret,
+        expiresIn: this.configService.get('JWT_EXPIRES_IN') || '7d',
+      }),
     };
   }
 
