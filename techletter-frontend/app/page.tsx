@@ -27,7 +27,15 @@ interface User { nickname: string }
 interface UserReport { topCategories: Array<{ category: Category }> }
 
 const stripHtml = (value = '') => value.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
-const asNews = (value: unknown) => Array.isArray(value) ? value as News[] : [];
+const isPortfolioReady = (news: News) => {
+  const summary = news.lead || news.aiSummary || stripHtml(news.content);
+  return news.title.trim().length >= 8
+    && summary.trim().length >= 20
+    && !summary.includes('작성 예정');
+};
+const asNews = (value: unknown) => Array.isArray(value)
+  ? (value as News[]).filter(isPortfolioReady)
+  : [];
 const dateLabel = (date?: string | null) => date
   ? new Date(date).toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' })
   : '';
