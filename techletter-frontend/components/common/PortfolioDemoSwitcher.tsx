@@ -113,7 +113,7 @@ export default function PortfolioDemoSwitcher() {
               <div>
                 <h2 className="text-lg font-bold text-gray-950 dark:text-white">역할별 포트폴리오 체험</h2>
                 <p className="mt-1 text-sm leading-relaxed text-gray-500 dark:text-gray-400">
-                  가입과 승인 없이 모든 화면을 볼 수 있습니다. 실제 데이터 보호를 위해 조회만 가능합니다.
+                  가입과 승인 없이 역할별 화면과 주요 기능을 자유롭게 체험할 수 있습니다.
                 </p>
               </div>
               <button
