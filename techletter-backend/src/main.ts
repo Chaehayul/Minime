@@ -4,7 +4,16 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 import { join } from 'path';
 
 function parseCorsOrigins(value?: string) {
-  return value?.split(',').map((origin) => origin.trim()).filter(Boolean) ?? ['http://localhost:3001'];
+  const configuredOrigins =
+    value?.split(',').map((origin) => origin.trim()).filter(Boolean) ?? [];
+
+  return [
+    ...new Set([
+      'http://localhost:3001',
+      'https://minime-eight.vercel.app',
+      ...configuredOrigins,
+    ]),
+  ];
 }
 
 async function bootstrap() {
