@@ -3,7 +3,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
-import { News } from '../news/news.entity';
+import { News, NewsStatus } from '../news/news.entity';
 import OpenAI from 'openai';
 
 interface ExternalTrend {
@@ -37,9 +37,7 @@ export class ChatbotService {
   // ─────────────────────────────────────────────
   async getAnswer(userMessage: string, userId?: string): Promise<string> {
     const openai = this.openai;
-    if (!openai) {
-      return '현재 포트폴리오 데모에서는 AI 챗봇 기능이 비활성화되어 있습니다.';
-    }
+    if (!openai) return this.buildNewsBasedAnswer(userMessage);
 
     try {
       // 1. 자체 뉴스 + 외부 트렌드 병렬 수집
@@ -81,8 +79,58 @@ export class ChatbotService {
       );
     } catch (error) {
       this.logger.error('챗봇 응답 에러:', error);
-      return '서버와 연결이 불안정하여 답변을 드릴 수 없습니다 😢';
+      return this.buildNewsBasedAnswer(userMessage);
     }
+  }
+
+  private async buildNewsBasedAnswer(userMessage: string): Promise<string> {
+    if (/^(안녕|안녕하세요|반가워|hi|hello|ㅎㅇ)[!.\s]*$/i.test(userMessage.trim())) {
+      return '안녕하세요. MINIME 뉴스 도우미입니다. 궁금한 IT 주제나 추천받고 싶은 분야를 입력해 주세요.';
+    }
+
+    const normalized = userMessage
+      .replace(/오늘|핫한|뉴스|알려줘|추천|요약|트렌드|관심사|관련/g, ' ')
+      .replace(/[^\w\sㄱ-힣]/g, ' ')
+      .toLowerCase();
+    const keywords = normalized.split(/\s+/).filter((word) => word.length >= 2);
+
+    const recentNews = await this.newsRepository.find({
+      where: { status: NewsStatus.PUBLISHED },
+      order: { publishedAt: 'DESC', createdAt: 'DESC' },
+      take: 12,
+      relations: ['category', 'tags'],
+    });
+    const matched = keywords.length
+      ? recentNews.filter((news) => {
+          const searchable = [
+            news.title,
+            news.lead,
+            news.aiSummary,
+            news.content,
+            news.category?.name,
+            ...(news.tags ?? []).map((tag) => tag.name),
+          ].join(' ').toLowerCase();
+          return keywords.some((keyword) => searchable.includes(keyword));
+        })
+      : recentNews;
+    const selected = (matched.length ? matched : recentNews).slice(0, 4);
+
+    if (!selected.length) {
+      return '현재 공개된 기사가 없습니다. 새 기사가 발행되면 이곳에서 바로 추천해 드릴게요.';
+    }
+
+    const intro = matched.length
+      ? '요청한 주제와 관련된 MINIME 기사입니다.'
+      : '정확히 일치하는 기사는 없어 최근 발행 기사로 안내합니다.';
+    const items = selected.map((news, index) => {
+      const summary = news.lead || news.aiSummary || this.stripHtml(news.content);
+      return `${index + 1}. [${news.category?.name ?? '기술'}] ${news.title}\n   ${summary.slice(0, 150)}`;
+    });
+    return [intro, '', ...items].join('\n');
+  }
+
+  private stripHtml(value: string): string {
+    return value.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
   }
 
   // ─────────────────────────────────────────────

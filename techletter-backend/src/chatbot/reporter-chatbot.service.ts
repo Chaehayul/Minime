@@ -7,8 +7,8 @@
 
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource } from 'typeorm';
-import { News } from '../news/news.entity';
+import { Repository } from 'typeorm';
+import { News, NewsStatus } from '../news/news.entity';
 import OpenAI from 'openai';
 
 // ── 타입 ──────────────────────────────────────
@@ -46,7 +46,6 @@ export class ReporterChatbotService {
   constructor(
     @InjectRepository(News)
     private newsRepository: Repository<News>,
-    private dataSource: DataSource,
   ) {
     this.openai = process.env.OPENAI_API_KEY
       ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
@@ -56,28 +55,22 @@ export class ReporterChatbotService {
   // ─────────────────────────────────────────────
   // Public: 기자용 챗봇 메인 진입점
   // ─────────────────────────────────────────────
-  async getReporterAnswer(
-    userMessage: string,
-    articleDraft?: string, // 기자가 작성 중인 기사 초안 (선택)
-  ): Promise<string> {
-    const openai = this.openai;
-    if (!openai) {
-      return '현재 포트폴리오 데모에서는 기자 AI 도우미 기능이 비활성화되어 있습니다.';
-    }
+  async getReporterAnswer(
+    userMessage: string,
+    articleDraft?: string, // 기자가 작성 중인 기사 초안 (선택)
+  ): Promise<string> {
+    const searchKeyword = this.extractKeyword(userMessage);
+    const [naverNews, ownNews] = await Promise.all([
+      this.searchNaverNews(searchKeyword),
+      this.searchOwnNews(searchKeyword),
+    ]);
+    const openai = this.openai;
+    if (!openai) return this.buildSourceBasedAnswer(userMessage, naverNews, ownNews, articleDraft);
 
-    try {
-      // 메시지에서 검색 키워드 추출
-      const searchKeyword = this.extractKeyword(userMessage);
-
-      // 세 가지 데이터 소스를 병렬로 수집
-      const [naverNews, ownNews] = await Promise.all([
-        this.searchNaverNews(searchKeyword),
-        this.searchOwnNews(searchKeyword),
-      ]);
-
-      const systemPrompt = this.buildReporterPrompt(
-        naverNews,
-        ownNews,
+    try {
+      const systemPrompt = this.buildReporterPrompt(
+        naverNews,
+        ownNews,
         articleDraft,
       );
 
@@ -94,9 +87,9 @@ export class ReporterChatbotService {
         response.choices[0].message.content ??
         '답변을 생성하지 못했습니다.'
       );
-    } catch (error) {
-      this.logger.error('기자용 챗봇 에러', error);
-      return '서버 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.';
+    } catch (error) {
+      this.logger.error('기자용 챗봇 에러', error);
+      return this.buildSourceBasedAnswer(userMessage, naverNews, ownNews, articleDraft);
     }
   }
 
@@ -156,39 +149,82 @@ export class ReporterChatbotService {
   // 방법 3: 자체 DB 뉴스 전문 검색
   // FULLTEXT 검색 or LIKE 검색
   // ─────────────────────────────────────────────
-  private async searchOwnNews(keyword: string): Promise<OwnNewsResult[]> {
-    try {
-      // MySQL FULLTEXT 검색 (schema에 FULLTEXT KEY ft_news_title_content 있음)
-      const rows = await this.dataSource.query(
-        `SELECT
-           n.id, n.title, n.content, n.ai_summary, n.published_at,
-           c.name AS category
-         FROM news n
-         LEFT JOIN categories c ON c.id = n.category_id
-         WHERE n.status = 'published'
-           AND (
-             MATCH(n.title, n.content) AGAINST(? IN BOOLEAN MODE)
-             OR n.title LIKE ?
-           )
-         ORDER BY n.published_at DESC
-         LIMIT 5`,
-        [keyword, `%${keyword}%`],
-      );
+  private async searchOwnNews(keyword: string): Promise<OwnNewsResult[]> {
+    try {
+      const query = this.newsRepository
+        .createQueryBuilder('news')
+        .leftJoinAndSelect('news.category', 'category')
+        .where('news.status = :status', { status: NewsStatus.PUBLISHED })
+        .orderBy('news.publishedAt', 'DESC')
+        .addOrderBy('news.createdAt', 'DESC')
+        .take(5);
 
-      return rows.map((r: any) => ({
-        id: r.id,
-        title: r.title,
-        // 본문이 길면 앞 500자만 (토큰 절약)
-        content: r.content?.slice(0, 500) ?? '',
-        aiSummary: r.ai_summary,
-        category: r.category ?? '기타',
-        publishedAt: r.published_at,
-      }));
-    } catch (err) {
-      this.logger.error('자체 DB 검색 실패', err);
-      return [];
-    }
-  }
+      if (keyword) {
+        query.andWhere(
+          '(LOWER(news.title) LIKE :keyword OR LOWER(news.content) LIKE :keyword)',
+          { keyword: `%${keyword.toLowerCase()}%` },
+        );
+      }
+
+      const rows = await query.getMany();
+      return rows.map((news) => ({
+        id: String(news.id),
+        title: news.title,
+        content: this.stripHtml(news.content ?? '').slice(0, 500),
+        aiSummary: news.aiSummary ?? null,
+        category: news.category?.name ?? '기타',
+        publishedAt: news.publishedAt ?? news.createdAt,
+      }));
+    } catch (err) {
+      this.logger.error('자체 DB 검색 실패', err);
+      return [];
+    }
+  }
+
+  private buildSourceBasedAnswer(
+    userMessage: string,
+    naverNews: NaverNewsItem[],
+    ownNews: OwnNewsResult[],
+    articleDraft?: string,
+  ): string {
+    if (/^(안녕|안녕하세요|반가워|hi|hello|ㅎㅇ)[!.\s]*$/i.test(userMessage.trim())) {
+      return '안녕하세요. MINIME 편집 지원 도우미입니다. 취재할 IT 주제나 검토할 기사 방향을 입력해 주세요.';
+    }
+
+    const lines: string[] = [];
+    if (ownNews.length) {
+      lines.push('MINIME 관련 기사');
+      ownNews.slice(0, 3).forEach((news, index) => {
+        const summary = news.aiSummary || news.content || '기사 본문을 확인해 주세요.';
+        lines.push(`${index + 1}. ${news.title}`);
+        lines.push(`   ${summary.slice(0, 140)}`);
+      });
+    }
+
+    if (naverNews.length) {
+      if (lines.length) lines.push('');
+      lines.push('최신 취재 참고 자료');
+      naverNews.slice(0, 3).forEach((news, index) => {
+        lines.push(`${index + 1}. ${news.title}`);
+        lines.push(`   ${news.description.slice(0, 140)}`);
+        lines.push(`   링크: ${news.originallink || news.link}`);
+      });
+    }
+
+    if (articleDraft?.trim()) {
+      if (lines.length) lines.push('');
+      lines.push('초안 검토 기준');
+      lines.push('1. 핵심 주장마다 출처가 연결되어 있는지 확인하세요.');
+      lines.push('2. 제목과 리드가 본문에서 실제로 다루는 범위를 넘지 않는지 확인하세요.');
+      lines.push('3. 수치와 인용은 원문 링크 및 발표 날짜와 대조하세요.');
+    }
+
+    if (!lines.length) {
+      return '입력한 주제와 일치하는 등록 기사나 외부 검색 결과를 찾지 못했습니다. 더 구체적인 기술명, 기업명 또는 제품명으로 다시 검색해 주세요.';
+    }
+
+    return lines.join('\n');
+  }
 
   // ─────────────────────────────────────────────
   // 시스템 프롬프트 — 기자용
@@ -299,18 +335,19 @@ ${draftBlock}`;
   // ─────────────────────────────────────────────
   // Helper: 메시지에서 검색 키워드 추출
   // ─────────────────────────────────────────────
-  private extractKeyword(message: string): string {
+  private extractKeyword(message: string): string {
     // 따옴표 안의 키워드 우선 추출
     const quoted = message.match(/["'](.+?)["']/);
     if (quoted) return quoted[1];
 
     // "~에 대해", "~관련", "~기사" 등 패턴 제거 후 핵심어 추출
-    return message
+    const keyword = message
       .replace(/참고|자료|기사|뉴스|써줘|찾아줘|알려줘|관련|최신|레퍼런스|취재/g, '')
       .replace(/[^\w\sㄱ-힣]/g, '')
       .trim()
       .slice(0, 30); // 네이버 API 검색어 최대 30자
-  }
+    return keyword || 'IT 기술';
+  }
 
   // HTML 태그 제거
   private stripHtml(str: string): string {

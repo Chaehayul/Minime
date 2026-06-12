@@ -13,15 +13,6 @@ const notifyDemo = (detail: string) => {
 
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('accessToken');
-  const demoRole = localStorage.getItem('portfolioDemoRole');
-  const method = (config.method || 'get').toLowerCase();
-  const isReadOnlyMethod = ['get', 'head', 'options'].includes(method);
-  const isDemoLogin = config.url === '/auth/demo';
-
-  if (demoRole && !isReadOnlyMethod && !isDemoLogin) {
-    notifyDemo('포트폴리오 체험에서는 실제 데이터 보호를 위해 조회 기능만 사용할 수 있습니다.');
-    return Promise.reject(new Error('DEMO_READ_ONLY'));
-  }
   if (token) config.headers.Authorization = `Bearer ${token}`;
   if (typeof FormData !== 'undefined' && config.data instanceof FormData) {
     delete config.headers['Content-Type'];
@@ -32,9 +23,6 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 403 && error.response?.data?.code === 'DEMO_READ_ONLY') {
-      notifyDemo('포트폴리오 체험에서는 실제 데이터 보호를 위해 조회 기능만 사용할 수 있습니다.');
-    }
     if (error.response?.status === 401) {
       if (localStorage.getItem('portfolioDemoRole')) {
         localStorage.removeItem('accessToken');
@@ -45,7 +33,7 @@ api.interceptors.response.use(
       localStorage.removeItem('accessToken');
       window.location.href = '/login';
     }
-    if (!error.response && error.message !== 'DEMO_READ_ONLY') {
+    if (!error.response) {
       notifyDemo('무료 서버를 시작하고 있습니다. 잠시 후 다시 시도해 주세요.');
     }
     return Promise.reject(error);

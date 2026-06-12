@@ -1,7 +1,6 @@
 import {
   CallHandler,
   ExecutionContext,
-  ForbiddenException,
   Injectable,
   NestInterceptor,
 } from '@nestjs/common';
@@ -11,18 +10,7 @@ import { map } from 'rxjs/operators';
 @Injectable()
 export class DemoReadOnlyInterceptor implements NestInterceptor {
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
-    const request = context.switchToHttp().getRequest<{
-      method: string;
-      user?: { isDemo?: boolean };
-    }>();
-    const readOnlyMethods = new Set(['GET', 'HEAD', 'OPTIONS']);
-
-    if (request.user?.isDemo && !readOnlyMethods.has(request.method.toUpperCase())) {
-      throw new ForbiddenException({
-        code: 'DEMO_READ_ONLY',
-        message: '포트폴리오 데모에서는 조회 기능만 사용할 수 있습니다.',
-      });
-    }
+    const request = context.switchToHttp().getRequest<{ user?: { isDemo?: boolean } }>();
 
     if (!request.user?.isDemo) return next.handle();
 
