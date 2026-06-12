@@ -65,6 +65,12 @@ body {
   }
 }
 
+@media (min-width: 768px) {
+  .mobile-bottom-nav {
+    display: none;
+  }
+}
+
 /* Admin pages were originally built with dark utilities. Keep them theme-aware
    without touching every individual control at once. */
 html:not(.dark) .admin-theme-scope {

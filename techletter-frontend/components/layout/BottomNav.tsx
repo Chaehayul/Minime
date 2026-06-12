@@ -48,7 +48,7 @@ export default function BottomNav() {
   };
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-gray-200 bg-white pb-[env(safe-area-inset-bottom)] shadow-[0_-1px_0_rgba(0,0,0,0.03)] dark:border-[#2e2e2e] dark:bg-[#0b0b0b] dark:shadow-none">
+    <nav className="mobile-bottom-nav fixed bottom-0 left-0 right-0 z-50 border-t border-gray-200 bg-white pb-[env(safe-area-inset-bottom)] shadow-[0_-1px_0_rgba(0,0,0,0.03)] dark:border-[#2e2e2e] dark:bg-[#0b0b0b] dark:shadow-none">
       <div className="mx-auto flex max-w-[1200px] items-center justify-around px-3 py-2">
         {items.map((item) => {
           const active = pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href));
