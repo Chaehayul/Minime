@@ -3,21 +3,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import api, { getImageUrl } from '@/lib/api';
-import ProfileAvatar from '@/components/common/ProfileAvatar';
 import SearchPreviewInput from '@/components/common/SearchPreviewInput';
 
-interface Category {
-  id: number;
-  name: string;
-  slug?: string;
-}
-
-interface Tag {
-  id: number;
-  name: string;
-  slug?: string;
-}
-
+interface Category { id: number; name: string }
 interface News {
   id: number;
   title: string;
@@ -25,464 +13,168 @@ interface News {
   lead?: string;
   aiSummary?: string;
   thumbnailUrl?: string | null;
-  viewCount?: number;
-  likeCount?: number;
   createdAt: string;
   publishedAt?: string | null;
-  lastViewedAt?: string;
-  author?: { nickname: string };
   category?: Category | null;
-  tags?: Tag[];
 }
-
 interface HomeFeed {
-  mainNews: News[];
-  urgentNews: News[];
-  recommendedNews: News[];
-  weeklyPopular: News[];
-  newsletterPreview: News[];
+  mainNews?: News[];
+  urgentNews?: News[];
+  recommendedNews?: News[];
+  weeklyPopular?: News[];
 }
-
-interface User {
-  nickname: string;
-  role?: string;
-}
-
-interface Subscription {
-  status: 'NONE' | 'ACTIVE' | 'CANCELED' | 'EXPIRED' | 'PAYMENT_FAILED';
-  planType: 'daily' | 'weekly' | 'all' | 'premium' | null;
-}
-
-interface UserReport {
-  topCategories: Array<{ category: Category }>;
-}
-
-interface Bookmark {
-  news?: News | null;
-}
-
-const emptyFeed: HomeFeed = {
-  mainNews: [],
-  urgentNews: [],
-  recommendedNews: [],
-  weeklyPopular: [],
-  newsletterPreview: [],
-};
-
-const asArray = <T,>(value: unknown): T[] => (Array.isArray(value) ? value : []);
+interface User { nickname: string }
+interface UserReport { topCategories: Array<{ category: Category }> }
 
 const stripHtml = (value = '') => value.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+const asNews = (value: unknown) => Array.isArray(value) ? value as News[] : [];
+const dateLabel = (date?: string | null) => date
+  ? new Date(date).toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' })
+  : '';
 
-const formatDate = (date: string | null | undefined) => {
-  if (!date) return '';
-  const parsed = new Date(date);
-  return Number.isNaN(parsed.getTime()) ? '' : parsed.toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' });
-};
-
-const planLabel: Record<string, string> = {
-  daily: '데일리',
-  weekly: '위클리',
-  all: '전체',
-  premium: '프리미엄',
-};
-
-function uniqueNews(list: News[]) {
-  const seen = new Set<number>();
-  return list.filter((news) => {
-    if (seen.has(news.id)) return false;
-    seen.add(news.id);
-    return true;
-  });
+function Thumb({ news, className }: { news: News; className: string }) {
+  const source = getImageUrl(news.thumbnailUrl);
+  return source ? <img src={source} alt="" className={`${className} object-cover`} /> : (
+    <div className={`${className} flex items-center justify-center bg-gray-100 text-xs font-semibold text-gray-400 dark:bg-gray-900`}>MINIME</div>
+  );
 }
 
-function NewsThumb({ news, className }: { news: News; className: string }) {
-  const image = getImageUrl(news.thumbnailUrl);
-  if (!image) {
-    return <div className={`${className} flex items-center justify-center bg-gray-100 text-xs text-gray-400 dark:bg-gray-800`}>이미지 없음</div>;
-  }
-  return <img src={image} alt={news.title} className={`${className} object-cover`} />;
-}
-
-function NewsListRow({ news }: { news: News }) {
+function NewsRow({ news, rank }: { news: News; rank?: number }) {
   return (
-    <Link href={`/news/${news.id}`} className="group flex gap-3 rounded-xl border-b border-gray-100 px-2 py-4 transition hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-gray-900/60">
-      <NewsThumb news={news} className="h-16 w-20 shrink-0 rounded-lg" />
-      <div className="min-w-0 flex-1">
-        <div className="mb-1 flex items-center gap-2 text-xs text-gray-500">
-          <span>{news.category?.name ?? '뉴스'}</span>
-          <span>{formatDate(news.publishedAt ?? news.createdAt)}</span>
+    <Link href={`/news/${news.id}`} className="group grid grid-cols-[1fr_112px] gap-4 border-b border-gray-200 py-5 dark:border-gray-800">
+      <div className="min-w-0">
+        <div className="mb-2 flex items-center gap-2 text-xs text-gray-500">
+          {rank && <strong className="text-blue-600">{String(rank).padStart(2, '0')}</strong>}
+          <span>{news.category?.name ?? '테크 뉴스'}</span>
+          <span>{dateLabel(news.publishedAt ?? news.createdAt)}</span>
         </div>
-        <p className="line-clamp-2 text-sm font-semibold text-gray-900 transition group-hover:text-blue-600 dark:text-gray-100">
-          {news.title}
-        </p>
-        <p className="mt-1 line-clamp-1 text-xs text-gray-500">{news.lead || news.aiSummary || stripHtml(news.content)}</p>
+        <h3 className="line-clamp-2 text-base font-bold group-hover:text-blue-600">{news.title}</h3>
+        <p className="mt-2 line-clamp-2 text-sm text-gray-500">{news.lead || news.aiSummary || stripHtml(news.content)}</p>
       </div>
+      <Thumb news={news} className="h-20 w-28" />
     </Link>
   );
 }
 
 export default function HomePage() {
-  const [latestNews, setLatestNews] = useState<News[]>([]);
-  const [homeFeed, setHomeFeed] = useState<HomeFeed>(emptyFeed);
+  const [feed, setFeed] = useState<HomeFeed>({});
+  const [latest, setLatest] = useState<News[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
-  const [activeCategoryId, setActiveCategoryId] = useState<number | null>(null);
+  const [activeCategory, setActiveCategory] = useState<number | null>(null);
   const [user, setUser] = useState<User | null>(null);
-  const [subscription, setSubscription] = useState<Subscription | null>(null);
   const [report, setReport] = useState<UserReport | null>(null);
-  const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
   const [loading, setLoading] = useState(true);
-  const [newsLoading, setNewsLoading] = useState(false);
-  const [page, setPage] = useState(1);
-  const [total, setTotal] = useState(0);
-
-  const isLoggedIn = !!user;
 
   useEffect(() => {
     const token = localStorage.getItem('accessToken');
-
-    const fetchHome = async () => {
-      setLoading(true);
-      try {
-        const baseRequests = [
-          api.get('/news/home'),
-          api.get('/news', { params: { limit: 12 } }),
-          api.get('/categories'),
-        ];
-
-        const authRequests = token
-          ? [
-              api.get('/users/me').catch(() => ({ data: null })),
-              api.get('/subscriptions/me').catch(() => ({ data: null })),
-              api.get('/users/me/report').catch(() => ({ data: null })),
-              api.get('/users/me/bookmarks').catch(() => ({ data: [] })),
-            ]
-          : [];
-
-        const [homeRes, newsRes, categoryRes, userRes, subscriptionRes, reportRes, bookmarkRes] = await Promise.all([
-          ...baseRequests,
-          ...authRequests,
-        ]);
-
-        const homeData = typeof homeRes.data === 'object' && homeRes.data !== null ? homeRes.data : {};
-        setHomeFeed({
-          mainNews: asArray<News>((homeData as Partial<HomeFeed>).mainNews),
-          urgentNews: asArray<News>((homeData as Partial<HomeFeed>).urgentNews),
-          recommendedNews: asArray<News>((homeData as Partial<HomeFeed>).recommendedNews),
-          weeklyPopular: asArray<News>((homeData as Partial<HomeFeed>).weeklyPopular),
-          newsletterPreview: asArray<News>((homeData as Partial<HomeFeed>).newsletterPreview),
-        });
-        setLatestNews(asArray<News>(newsRes.data?.news));
-        setTotal(Number(newsRes.data?.total) || 0);
-        setCategories(asArray<Category>(categoryRes.data));
-        if (userRes) setUser(userRes.data);
-        if (subscriptionRes) setSubscription(subscriptionRes.data);
-        if (reportRes) setReport(reportRes.data);
-        if (bookmarkRes) setBookmarks(asArray<Bookmark>(bookmarkRes.data));
-      } catch (error) {
-        console.error(error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchHome();
+    Promise.all([
+      api.get('/news/home'),
+      api.get('/news', { params: { limit: 12 } }),
+      api.get('/categories'),
+      token ? api.get('/users/me').catch(() => ({ data: null })) : Promise.resolve({ data: null }),
+      token ? api.get('/users/me/report').catch(() => ({ data: null })) : Promise.resolve({ data: null }),
+    ])
+      .then(([feedResponse, newsResponse, categoryResponse, userResponse, reportResponse]) => {
+        setFeed(feedResponse.data ?? {});
+        setLatest(asNews(newsResponse.data?.news));
+        setCategories(Array.isArray(categoryResponse.data) ? categoryResponse.data : []);
+        setUser(userResponse.data);
+        setReport(reportResponse.data);
+      })
+      .finally(() => setLoading(false));
   }, []);
 
   useEffect(() => {
     if (loading) return;
-    const fetchByCategory = async () => {
-      setNewsLoading(true);
-      setPage(1);
-      try {
-        const params: Record<string, number> = { limit: 12 };
-        if (activeCategoryId !== null) params.categoryId = activeCategoryId;
-        const res = await api.get('/news', { params });
-        setLatestNews(asArray<News>(res.data?.news));
-        setTotal(Number(res.data?.total) || 0);
-      } catch (error) {
-        console.error(error);
-      } finally {
-        setNewsLoading(false);
-      }
-    };
+    api.get('/news', { params: { limit: 12, ...(activeCategory ? { categoryId: activeCategory } : {}) } })
+      .then((response) => setLatest(asNews(response.data?.news)));
+  }, [activeCategory, loading]);
 
-    fetchByCategory();
-  }, [activeCategoryId, loading]);
-
-  const loadMore = async () => {
-    const nextPage = page + 1;
-    setNewsLoading(true);
-    try {
-      const params: Record<string, number> = { page: nextPage, limit: 12 };
-      if (activeCategoryId !== null) params.categoryId = activeCategoryId;
-      const res = await api.get('/news', { params });
-      setLatestNews((prev) => [...prev, ...asArray<News>(res.data?.news)]);
-      setPage(nextPage);
-      setTotal(Number(res.data?.total) || total);
-    } finally {
-      setNewsLoading(false);
-    }
-  };
-
-  const featuredNews = homeFeed.urgentNews[0] || homeFeed.mainNews[0] || homeFeed.weeklyPopular[0] || latestNews[0];
-  const editorPickedNews = homeFeed.recommendedNews.filter((news) => news.id !== featuredNews?.id).slice(0, 4);
-  const weeklyPopular = uniqueNews(homeFeed.weeklyPopular.length ? homeFeed.weeklyPopular : latestNews).slice(0, 5);
-  const newsletterPreview = uniqueNews(homeFeed.newsletterPreview.length ? homeFeed.newsletterPreview : weeklyPopular).slice(0, 4);
-  const likedNews = useMemo(
-    () => [...latestNews].sort((a, b) => (b.likeCount ?? 0) - (a.likeCount ?? 0)).slice(0, 4),
-    [latestNews],
-  );
-  const keywordChips = useMemo(() => {
-    const tagMap = new Map<string, number>();
-    uniqueNews([...latestNews, ...homeFeed.weeklyPopular, ...homeFeed.recommendedNews]).forEach((news) => {
-      news.tags?.forEach((tag) => tagMap.set(tag.name, (tagMap.get(tag.name) ?? 0) + 1));
-    });
-    return [...tagMap.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10).map(([name]) => name);
-  }, [homeFeed.recommendedNews, homeFeed.weeklyPopular, latestNews]);
-
-  const personalizedNews = useMemo(() => {
-    const categoryIds = new Set(report?.topCategories?.map((item) => item.category.id) || []);
-    const savedIds = new Set(asArray<Bookmark>(bookmarks).map((bookmark) => bookmark.news?.id).filter(Boolean));
-    const candidates = uniqueNews([...homeFeed.recommendedNews, ...latestNews, ...weeklyPopular]);
-    return candidates
-      .map((news) => {
-        let score = 0;
-        if (news.category?.id && categoryIds.has(news.category.id)) score += 4;
-        if (savedIds.has(news.id)) score += 3;
-        score += Math.min(news.likeCount ?? 0, 20) / 10;
-        score += Math.min(news.viewCount ?? 0, 100) / 50;
-        return { news, score };
-      })
-      .filter((item) => item.score > 0)
-      .sort((a, b) => b.score - a.score)
-      .map((item) => item.news)
+  const featured = asNews(feed.urgentNews)[0] || asNews(feed.mainNews)[0] || latest[0];
+  const picked = asNews(feed.recommendedNews).filter((news) => news.id !== featured?.id).slice(0, 3);
+  const popular = (asNews(feed.weeklyPopular).length ? asNews(feed.weeklyPopular) : latest).slice(0, 5);
+  const interestNames = report?.topCategories?.map((item) => item.category.name).join(', ');
+  const personalized = useMemo(() => {
+    const ids = new Set(report?.topCategories?.map((item) => item.category.id) ?? []);
+    return [...asNews(feed.recommendedNews), ...latest]
+      .filter((news, index, list) => list.findIndex((item) => item.id === news.id) === index)
+      .sort((a, b) => Number(ids.has(b.category?.id ?? -1)) - Number(ids.has(a.category?.id ?? -1)))
       .slice(0, 4);
-  }, [bookmarks, homeFeed.recommendedNews, latestNews, report, weeklyPopular]);
+  }, [feed.recommendedNews, latest, report]);
 
-  const hasMore = latestNews.length < total;
-  const isActiveSubscriber = subscription?.status === 'ACTIVE';
+  if (loading) {
+    return <main className="mx-auto min-h-screen max-w-6xl px-4 py-10"><div className="h-96 animate-pulse bg-gray-100 dark:bg-gray-900" /></main>;
+  }
 
   return (
-    <div className="min-h-screen bg-white text-gray-950 transition-colors dark:bg-[#0b0b0b] dark:text-white">
-      <header className="sticky top-0 z-50 border-b border-gray-100 bg-white/95 backdrop-blur dark:border-gray-800 dark:bg-[#0b0b0b]/95">
-        <div className="mx-auto flex h-16 max-w-5xl items-center gap-3 px-4">
-          <Link href="/" className="text-lg font-bold text-gray-900 dark:text-white">MINIME</Link>
-          <SearchPreviewInput className="flex-1" placeholder="뉴스, 기자, 아이디 검색" />
-          {isLoggedIn ? (
-            <Link href="/mypage" aria-label="마이페이지">
-              <ProfileAvatar nickname={user?.nickname} size="md" />
-            </Link>
-          ) : (
-            <div className="flex items-center gap-2">
-              <Link href="/login" className="text-sm text-gray-500 transition hover:text-gray-900 dark:hover:text-white">로그인</Link>
-              <Link href="/signup" className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-blue-700">가입</Link>
+    <main className="mx-auto min-h-screen max-w-6xl px-4 pb-20">
+      <section className="grid min-h-[430px] gap-8 border-b border-gray-200 py-8 dark:border-gray-800 lg:grid-cols-[1.5fr_0.8fr]">
+        {featured ? (
+          <Link href={`/news/${featured.id}`} className="group relative min-h-[360px] overflow-hidden bg-gray-950">
+            <Thumb news={featured} className="absolute inset-0 h-full w-full opacity-65 transition duration-500 group-hover:scale-[1.02]" />
+            <div className="absolute inset-0 bg-gradient-to-t from-black via-black/20 to-transparent" />
+            <div className="absolute inset-x-0 bottom-0 p-6 text-white sm:p-8">
+              <span className="text-xs font-bold uppercase text-blue-300">Today&apos;s briefing</span>
+              <h1 className="mt-3 max-w-3xl text-3xl font-bold leading-tight sm:text-4xl">{featured.title}</h1>
+              <p className="mt-3 line-clamp-2 max-w-2xl text-sm text-gray-200">{featured.lead || featured.aiSummary || stripHtml(featured.content)}</p>
             </div>
-          )}
-        </div>
+          </Link>
+        ) : <div className="flex min-h-[360px] items-center justify-center bg-gray-100 text-gray-500 dark:bg-gray-900">등록된 기사가 없습니다.</div>}
 
-        <div className="mx-auto max-w-5xl overflow-x-auto px-4 pb-4 pt-1">
-          <div className="flex min-w-max gap-1.5">
-            <button
-              onClick={() => setActiveCategoryId(null)}
-              className={`rounded-full px-3 py-1 text-xs font-medium transition ${
-                activeCategoryId === null
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-100 text-gray-500 hover:text-gray-900 dark:bg-gray-800 dark:text-gray-400 dark:hover:text-white'
-              }`}
-            >
-              전체
-            </button>
+        <aside>
+          <p className="text-xs font-bold uppercase text-blue-600">Editor&apos;s picks</p>
+          <h2 className="mt-1 text-xl font-bold">지금 놓치면 아쉬운 뉴스</h2>
+          <div className="mt-3">
+            {(picked.length ? picked : latest.slice(1, 4)).map((news) => <NewsRow key={news.id} news={news} />)}
+          </div>
+        </aside>
+      </section>
+
+      <section className="border-b border-gray-200 py-6 dark:border-gray-800">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-wrap gap-2">
+            <button onClick={() => setActiveCategory(null)} className={`px-3 py-2 text-sm ${activeCategory === null ? 'bg-gray-950 text-white dark:bg-white dark:text-gray-950' : 'bg-gray-100 dark:bg-gray-900'}`}>전체</button>
             {categories.map((category) => (
-              <button
-                key={category.id}
-                onClick={() => setActiveCategoryId(category.id)}
-                className={`rounded-full px-3 py-1 text-xs font-medium transition ${
-                  activeCategoryId === category.id
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-gray-100 text-gray-500 hover:text-gray-900 dark:bg-gray-800 dark:text-gray-400 dark:hover:text-white'
-                }`}
-              >
+              <button key={category.id} onClick={() => setActiveCategory(category.id)} className={`px-3 py-2 text-sm ${activeCategory === category.id ? 'bg-gray-950 text-white dark:bg-white dark:text-gray-950' : 'bg-gray-100 dark:bg-gray-900'}`}>
                 {category.name}
               </button>
             ))}
           </div>
+          <div className="w-full sm:w-72"><SearchPreviewInput /></div>
         </div>
-      </header>
+      </section>
 
-      <main className="mx-auto flex max-w-5xl flex-col gap-8 px-4 py-5 pb-28">
-        {loading ? (
-          <div className="grid gap-4 lg:grid-cols-[1.4fr_0.8fr]">
-            <div className="h-80 animate-pulse rounded-2xl bg-gray-100 dark:bg-gray-800" />
-            <div className="h-80 animate-pulse rounded-2xl bg-gray-100 dark:bg-gray-800" />
+      {user && personalized.length > 0 && (
+        <section className="border-b border-gray-200 py-10 dark:border-gray-800">
+          <p className="text-xs font-bold uppercase text-blue-600">For {user.nickname}</p>
+          <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-end">
+            <h2 className="text-2xl font-bold">관심 분야를 반영한 추천</h2>
+            <span className="text-sm text-gray-500">{interestNames ? `${interestNames} 활동 기준` : '최근 활동 기준'}</span>
           </div>
-        ) : featuredNews ? (
-          <section className={`grid gap-4 ${editorPickedNews.length > 0 ? 'lg:grid-cols-[1.4fr_0.8fr]' : ''}`}>
-            <Link href={`/news/${featuredNews.id}`} className="group overflow-hidden rounded-2xl border border-gray-200 bg-gray-50 transition hover:border-blue-400 dark:border-gray-800 dark:bg-gray-900">
-              <div className="relative h-[22rem] max-h-[58vh] min-h-72">
-                <NewsThumb news={featuredNews} className="h-full w-full" />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
-                <div className="absolute bottom-0 p-5">
-                  <div className="mb-3 inline-flex rounded-full bg-blue-600 px-3 py-1 text-xs font-bold text-white">오늘의 주요 뉴스</div>
-                  <h1 className="line-clamp-2 text-2xl font-bold leading-tight text-white">{featuredNews.title}</h1>
-                  <p className="mt-2 line-clamp-2 text-sm text-gray-200">{featuredNews.lead || featuredNews.aiSummary || stripHtml(featuredNews.content)}</p>
-                </div>
-              </div>
-            </Link>
-
-            {editorPickedNews.length > 0 && (
-              <aside className="rounded-2xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-900">
-                <h2 className="mb-3 text-sm font-bold">관리자가 고른 뉴스</h2>
-                <div className="flex flex-col divide-y divide-gray-200 dark:divide-gray-800">
-                  {editorPickedNews.map((news, index) => (
-                    <Link key={news.id} href={`/news/${news.id}`} className="flex gap-3 py-3 first:pt-0 last:pb-0">
-                      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gray-200 text-xs font-bold text-gray-600 dark:bg-gray-800 dark:text-gray-300">
-                        {index + 1}
-                      </span>
-                      <div className="min-w-0">
-                        <p className="line-clamp-2 text-sm font-semibold">{news.title}</p>
-                        <p className="mt-1 text-xs text-gray-500">조회 {(news.viewCount ?? 0).toLocaleString()}</p>
-                      </div>
-                    </Link>
-                  ))}
-                </div>
-              </aside>
-            )}
-          </section>
-        ) : null}
-
-        <section className="grid gap-4 lg:grid-cols-[1fr_320px]">
-          <div className="rounded-2xl border border-gray-200 bg-gray-50 p-5 dark:border-gray-800 dark:bg-gray-900">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h2 className="text-base font-bold">뉴스레터로 흐름을 놓치지 마세요</h2>
-                <p className="mt-1 text-sm text-gray-500">
-                  {isActiveSubscriber
-                    ? `${planLabel[subscription?.planType ?? 'all']} 플랜을 구독 중입니다. 마이페이지에서 수신 설정을 관리할 수 있어요.`
-                    : '데일리와 위클리 뉴스레터로 중요한 기술 뉴스를 정리해서 받아보세요.'}
-                </p>
-              </div>
-              <Link
-                href={isActiveSubscriber ? '/mypage' : '/subscriptions/plans'}
-                className="shrink-0 rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white transition hover:bg-blue-700"
-              >
-                {isActiveSubscriber ? '설정 보기' : '구독하기'}
+          <div className="mt-6 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+            {personalized.map((news) => (
+              <Link key={news.id} href={`/news/${news.id}`} className="group">
+                <Thumb news={news} className="aspect-[4/3] w-full" />
+                <span className="mt-3 block text-xs text-blue-600">{news.category?.name ?? '테크 뉴스'}</span>
+                <h3 className="mt-1 line-clamp-2 font-bold group-hover:text-blue-600">{news.title}</h3>
               </Link>
-            </div>
-          </div>
-
-          <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-gray-900">
-            <h2 className="mb-3 text-sm font-bold">이번 주 뉴스레터 미리보기</h2>
-            <div className="flex flex-col gap-2 text-sm text-gray-600 dark:text-gray-300">
-              {newsletterPreview.slice(0, 3).map((news) => (
-                <Link key={news.id} href={`/news/${news.id}`} className="line-clamp-1 hover:text-blue-500">
-                  {news.title}
-                </Link>
-              ))}
-            </div>
+            ))}
           </div>
         </section>
+      )}
 
-        {isLoggedIn && (
-          <section>
-            <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-base font-bold">내 관심 기반 추천</h2>
-              <Link href="/mypage/bookmarks" className="text-sm text-blue-500">저장한 뉴스</Link>
-            </div>
-            {personalizedNews.length > 0 ? (
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                {personalizedNews.map((news) => (
-                  <Link key={news.id} href={`/news/${news.id}`} className="overflow-hidden rounded-xl border border-gray-200 bg-white transition hover:border-blue-400 dark:border-gray-800 dark:bg-gray-900">
-                    <NewsThumb news={news} className="h-28 w-full" />
-                    <div className="p-3">
-                      <p className="line-clamp-2 text-sm font-semibold">{news.title}</p>
-                      <p className="mt-2 text-xs text-gray-500">{news.category?.name ?? '추천'}</p>
-                    </div>
-                  </Link>
-                ))}
-              </div>
-            ) : (
-              <div className="rounded-xl border border-dashed border-gray-300 px-4 py-8 text-center text-sm text-gray-500 dark:border-gray-700">
-                뉴스를 저장하거나 좋아요를 누르면 관심 기반 추천이 좋아집니다.
-              </div>
-            )}
-          </section>
-        )}
-
-        <section>
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-base font-bold">최신 뉴스</h2>
-            <span className="text-xs text-gray-500">{total.toLocaleString()}개</span>
-          </div>
-          {newsLoading && latestNews.length === 0 ? (
-            <div className="flex flex-col gap-3">
-              {[1, 2, 3].map((item) => <div key={item} className="h-24 animate-pulse rounded-xl bg-gray-100 dark:bg-gray-800" />)}
-            </div>
-          ) : latestNews.length > 0 ? (
-            <div className="flex flex-col">
-              {latestNews.map((news) => <NewsListRow key={news.id} news={news} />)}
-            </div>
-          ) : (
-            <div className="rounded-xl border border-dashed border-gray-300 px-4 py-10 text-center text-sm text-gray-500 dark:border-gray-700">
-              표시할 뉴스가 없습니다.
-            </div>
-          )}
-
-          {hasMore && (
-            <button
-              onClick={loadMore}
-              disabled={newsLoading}
-              className="mt-4 w-full rounded-xl border border-gray-300 py-3 text-sm font-semibold text-gray-600 transition hover:border-gray-500 hover:text-gray-900 disabled:opacity-50 dark:border-gray-700 dark:text-gray-300 dark:hover:text-white"
-            >
-              {newsLoading ? '불러오는 중...' : '더보기'}
-            </button>
-          )}
-        </section>
-
-        <section className="grid gap-4 lg:grid-cols-2">
-          <div>
-            <h2 className="mb-3 text-base font-bold">이번 주 인기 뉴스 TOP 5</h2>
-            <div className="flex flex-col gap-2">
-              {weeklyPopular.map((news, index) => (
-                <Link key={news.id} href={`/news/${news.id}`} className="flex items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 p-3 transition hover:border-blue-400 dark:border-gray-800 dark:bg-gray-900">
-                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gray-200 text-xs font-bold text-gray-700 dark:bg-gray-800 dark:text-gray-300">
-                    {index + 1}
-                  </span>
-                  <p className="line-clamp-1 flex-1 text-sm font-semibold">{news.title}</p>
-                  <span className="text-xs text-gray-500">{(news.viewCount ?? 0).toLocaleString()}</span>
-                </Link>
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <h2 className="mb-3 text-base font-bold">저장/좋아요 많은 뉴스</h2>
-            <div className="grid gap-2">
-              {likedNews.map((news) => (
-                <Link key={news.id} href={`/news/${news.id}`} className="rounded-xl border border-gray-200 bg-gray-50 p-3 transition hover:border-blue-400 dark:border-gray-800 dark:bg-gray-900">
-                  <p className="line-clamp-1 text-sm font-semibold">{news.title}</p>
-                  <div className="mt-2 flex gap-3 text-xs text-gray-500">
-                    <span>좋아요 {(news.likeCount ?? 0).toLocaleString()}</span>
-                    <span>조회 {(news.viewCount ?? 0).toLocaleString()}</span>
-                  </div>
-                </Link>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        {keywordChips.length > 0 && (
-          <section>
-            <h2 className="mb-3 text-base font-bold">지금 많이 보는 키워드</h2>
-            <div className="flex flex-wrap gap-2">
-              {keywordChips.map((keyword) => (
-                <Link key={keyword} href={`/search?tag=${encodeURIComponent(keyword)}`} className="rounded-full bg-gray-100 px-3 py-1.5 text-sm font-medium text-gray-600 transition hover:bg-blue-600 hover:text-white dark:bg-gray-800 dark:text-gray-300">
-                  #{keyword}
-                </Link>
-              ))}
-            </div>
-          </section>
-        )}
-      </main>
-    </div>
+      <section className="grid gap-10 py-10 lg:grid-cols-[1.5fr_0.7fr]">
+        <div>
+          <p className="text-xs font-bold uppercase text-blue-600">Latest</p>
+          <h2 className="mt-1 text-2xl font-bold">최신 기술 뉴스</h2>
+          <div className="mt-4">{latest.map((news) => <NewsRow key={news.id} news={news} />)}</div>
+        </div>
+        <aside>
+          <p className="text-xs font-bold uppercase text-blue-600">Weekly ranking</p>
+          <h2 className="mt-1 text-2xl font-bold">이번 주 많이 본 기사</h2>
+          <div className="mt-4">{popular.map((news, index) => <NewsRow key={news.id} news={news} rank={index + 1} />)}</div>
+        </aside>
+      </section>
+    </main>
   );
 }

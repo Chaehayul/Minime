@@ -65,7 +65,7 @@ export default function Chatbot() {
   const hasUnread = !isOpen && messages.length > 1;
 
   return (
-    <div className="fixed bottom-[calc(110px+env(safe-area-inset-bottom))] right-6 z-[9999] font-sans">
+    <div className="fixed bottom-[calc(110px+env(safe-area-inset-bottom))] right-6 z-[9999] hidden font-sans sm:block">
       {isOpen && (
         <section className="mb-4 flex h-[540px] w-[356px] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-3xl border border-black/10 bg-[#F5F4EF] shadow-2xl">
           <header className="flex items-center justify-between bg-[#1A1916] px-4 py-3 text-white">

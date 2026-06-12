@@ -8,6 +8,10 @@ import { Comment } from '../interactions/entities/comment.entity';
 import { Subscription } from '../subscriptions/subscription.entity';
 import { NewsletterSend } from '../newsletter/newsletter.entity';
 import { NewsView } from '../news/news-view.entity';
+import {
+  ReporterProfile,
+  ReporterStatus,
+} from '../reporters/reporter-profile.entity';
 
 @Injectable()
 export class StatsService {
@@ -26,9 +30,20 @@ export class StatsService {
     private newsletterRepository: Repository<NewsletterSend>,
     @InjectRepository(NewsView)
     private newsViewRepository: Repository<NewsView>,
+    @InjectRepository(ReporterProfile)
+    private reporterProfileRepository: Repository<ReporterProfile>,
   ) {}
 
   async getDashboard() {
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const monthStart = new Date(
+      todayStart.getFullYear(),
+      todayStart.getMonth(),
+      1,
+    );
+    const sevenDaysAgo = new Date(todayStart);
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
     const [
       totalUsers,
       totalSubscribers,
@@ -48,19 +63,25 @@ export class StatsService {
       recentNews,
       newsletterRaw,
       pendingNewsletter,
+      pendingReporters,
+      reviewNews,
     ] = await Promise.all([
       this.userRepository.count(),
       this.subscriptionRepository.count(),
       this.subscriptionRepository.count({ where: { status: 'ACTIVE' } }),
       this.subscriptionRepository.count({ where: { status: 'CANCELED' } }),
-      this.subscriptionRepository.count({ where: { status: 'PAYMENT_FAILED' } }),
+      this.subscriptionRepository.count({
+        where: { status: 'PAYMENT_FAILED' },
+      }),
       this.newsRepository.count({ where: { status: NewsStatus.PUBLISHED } }),
       this.newsRepository.count({ where: { status: NewsStatus.DRAFT } }),
       this.newsRepository.count({ where: { status: NewsStatus.SCHEDULED } }),
       this.newsRepository
         .createQueryBuilder('news')
         .where('news.status = :status', { status: NewsStatus.PUBLISHED })
-        .andWhere('DATE(COALESCE(news.publishedAt, news.createdAt)) = CURDATE()')
+        .andWhere('COALESCE(news.publishedAt, news.createdAt) >= :todayStart', {
+          todayStart,
+        })
         .getCount(),
       this.newsRepository
         .createQueryBuilder('news')
@@ -78,7 +99,7 @@ export class StatsService {
         .getRawOne<{ totalViews: string; averageViews: string }>(),
       this.newsViewRepository
         .createQueryBuilder('view')
-        .where('DATE(view.createdAt) = CURDATE()')
+        .where('view.createdAt >= :todayStart', { todayStart })
         .getCount(),
       this.newsRepository.find({
         where: { status: NewsStatus.PUBLISHED },
@@ -97,30 +118,45 @@ export class StatsService {
         .select('COALESCE(SUM(send.recipientCount), 0)', 'recipients')
         .addSelect('COALESCE(SUM(send.successCount), 0)', 'success')
         .addSelect('COALESCE(SUM(send.failCount), 0)', 'failed')
-        .where('send.status IN (:...statuses)', { statuses: ['SUCCESS', 'FAILED'] })
+        .where('send.status IN (:...statuses)', {
+          statuses: ['SUCCESS', 'FAILED'],
+        })
         .getRawOne<{ recipients: string; success: string; failed: string }>(),
       this.newsletterRepository.count({ where: { status: 'SCHEDULED' } }),
+      this.reporterProfileRepository.count({
+        where: { status: ReporterStatus.PENDING },
+      }),
+      this.newsRepository.count({ where: { status: NewsStatus.REVIEW } }),
     ]);
 
-    const [dailySubscribers, weeklySubscribers, allSubscribers, premiumSubscribers, monthNewSubscribers, monthCanceledSubscribers, subscriberTrendRaw, categoryRaw] = await Promise.all([
+    const [
+      dailySubscribers,
+      weeklySubscribers,
+      allSubscribers,
+      premiumSubscribers,
+      monthNewSubscribers,
+      monthCanceledSubscribers,
+      subscriberTrendRaw,
+      categoryRaw,
+    ] = await Promise.all([
       this.subscriptionRepository.count({ where: { planType: 'daily' } }),
       this.subscriptionRepository.count({ where: { planType: 'weekly' } }),
       this.subscriptionRepository.count({ where: { planType: 'all' } }),
       this.subscriptionRepository.count({ where: { planType: 'premium' } }),
       this.subscriptionRepository
         .createQueryBuilder('subscription')
-        .where('subscription.createdAt >= DATE_FORMAT(CURDATE(), "%Y-%m-01")')
+        .where('subscription.createdAt >= :monthStart', { monthStart })
         .getCount(),
       this.subscriptionRepository
         .createQueryBuilder('subscription')
         .where('subscription.status = :status', { status: 'CANCELED' })
-        .andWhere('subscription.updatedAt >= DATE_FORMAT(CURDATE(), "%Y-%m-01")')
+        .andWhere('subscription.updatedAt >= :monthStart', { monthStart })
         .getCount(),
       this.subscriptionRepository
         .createQueryBuilder('subscription')
         .select('DATE(subscription.createdAt)', 'date')
         .addSelect('COUNT(*)', 'count')
-        .where('subscription.createdAt >= DATE_SUB(CURDATE(), INTERVAL 6 DAY)')
+        .where('subscription.createdAt >= :sevenDaysAgo', { sevenDaysAgo })
         .groupBy('DATE(subscription.createdAt)')
         .orderBy('date', 'ASC')
         .getRawMany<{ date: string; count: string }>(),
@@ -140,18 +176,35 @@ export class StatsService {
 
     const totalViews = Number(viewsRaw?.totalViews ?? 0);
     const averageViews = Math.round(Number(viewsRaw?.averageViews ?? 0));
-    const likeConversionRate = totalViews > 0 ? Math.round((totalLikes / totalViews) * 100) : 0;
-    const commentParticipationRate = totalViews > 0 ? Math.round((totalComments / totalViews) * 100) : 0;
-    const cancelRate = totalSubscribers > 0 ? Math.round((canceledSubscribers / totalSubscribers) * 100) : 0;
-    const monthlyCancelRate = activeSubscribers + monthCanceledSubscribers > 0
-      ? Math.round((monthCanceledSubscribers / (activeSubscribers + monthCanceledSubscribers)) * 100)
-      : 0;
+    const likeConversionRate =
+      totalViews > 0 ? Math.round((totalLikes / totalViews) * 100) : 0;
+    const commentParticipationRate =
+      totalViews > 0 ? Math.round((totalComments / totalViews) * 100) : 0;
+    const cancelRate =
+      totalSubscribers > 0
+        ? Math.round((canceledSubscribers / totalSubscribers) * 100)
+        : 0;
+    const monthlyCancelRate =
+      activeSubscribers + monthCanceledSubscribers > 0
+        ? Math.round(
+            (monthCanceledSubscribers /
+              (activeSubscribers + monthCanceledSubscribers)) *
+              100,
+          )
+        : 0;
     const newsletterRecipients = Number(newsletterRaw?.recipients ?? 0);
     const newsletterSuccess = Number(newsletterRaw?.success ?? 0);
     const newsletterFailed = Number(newsletterRaw?.failed ?? 0);
-    const deliverySuccessRate = newsletterRecipients > 0 ? Math.round((newsletterSuccess / newsletterRecipients) * 100) : 0;
-    const aiNewsRate = totalNews > 0 ? Math.round((aiNews / totalNews) * 100) : 0;
-    const totalCategoryViews = categoryRaw.reduce((sum, category) => sum + Number(category.views ?? 0), 0);
+    const deliverySuccessRate =
+      newsletterRecipients > 0
+        ? Math.round((newsletterSuccess / newsletterRecipients) * 100)
+        : 0;
+    const aiNewsRate =
+      totalNews > 0 ? Math.round((aiNews / totalNews) * 100) : 0;
+    const totalCategoryViews = categoryRaw.reduce(
+      (sum, category) => sum + Number(category.views ?? 0),
+      0,
+    );
     const subscriberTrend = this.fillLastSevenDays(subscriberTrendRaw);
 
     return {
@@ -174,6 +227,8 @@ export class StatsService {
       draftNews,
       scheduledNews,
       pendingNewsletter,
+      pendingReporters,
+      reviewNews,
       todayPublishedNews,
       aiNews,
       aiNewsRate,
@@ -198,7 +253,12 @@ export class StatsService {
         name: category.name,
         count: Number(category.count ?? 0),
         views: Number(category.views ?? 0),
-        rate: totalCategoryViews > 0 ? Math.round((Number(category.views ?? 0) / totalCategoryViews) * 100) : 0,
+        rate:
+          totalCategoryViews > 0
+            ? Math.round(
+                (Number(category.views ?? 0) / totalCategoryViews) * 100,
+              )
+            : 0,
       })),
       topNews,
       recentNews,
@@ -207,7 +267,10 @@ export class StatsService {
 
   private fillLastSevenDays(raw: { date: string; count: string }[]) {
     const counts = new Map(
-      raw.map((item) => [new Date(item.date).toISOString().slice(0, 10), Number(item.count ?? 0)]),
+      raw.map((item) => [
+        new Date(item.date).toISOString().slice(0, 10),
+        Number(item.count ?? 0),
+      ]),
     );
 
     return Array.from({ length: 7 }).map((_, index) => {
@@ -216,7 +279,10 @@ export class StatsService {
       const key = date.toISOString().slice(0, 10);
       return {
         date: key,
-        label: date.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' }),
+        label: date.toLocaleDateString('ko-KR', {
+          month: 'numeric',
+          day: 'numeric',
+        }),
         count: counts.get(key) ?? 0,
       };
     });

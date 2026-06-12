@@ -10,10 +10,20 @@ import { NewsView } from '../news/news-view.entity';
 import { StatsService } from './stats.service';
 import { StatsController } from './stats.controller';
 import { AuthModule } from '../auth/auth.module';
+import { ReporterProfile } from '../reporters/reporter-profile.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([News, User, Like, Comment, Subscription, NewsletterSend, NewsView]),
+    TypeOrmModule.forFeature([
+      News,
+      User,
+      Like,
+      Comment,
+      Subscription,
+      NewsletterSend,
+      NewsView,
+      ReporterProfile,
+    ]),
     AuthModule,
   ],
   providers: [StatsService],
