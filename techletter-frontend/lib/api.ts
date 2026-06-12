@@ -54,6 +54,10 @@ api.interceptors.response.use(
 
 export const getImageUrl = (url: string | null | undefined): string => {
   if (!url) return '';
+  if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?\//.test(url)) {
+    const localUrl = new URL(url);
+    return `${API_BASE_URL}${localUrl.pathname}${localUrl.search}`;
+  }
   if (url.startsWith('http')) return url;
   return `${API_BASE_URL}${url}`;
 };
